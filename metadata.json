@@ -1,0 +1,6 @@
+{
+  "name": "Music Creator",
+  "description": "Create, mix and generate AI music",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
