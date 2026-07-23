@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,7 +32,9 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.DeckScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.SequencerScreen
 import com.example.ui.viewmodels.LocalMusicViewModel
+import com.example.ui.viewmodels.SequencerViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,6 +57,7 @@ class MainActivity : ComponentActivity() {
 fun MainApp() {
     val navController = rememberNavController()
     val localMusicViewModel: LocalMusicViewModel = viewModel()
+    val sequencerViewModel: SequencerViewModel = viewModel()
 
     Scaffold(
         bottomBar = {
@@ -61,6 +65,20 @@ fun MainApp() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
 
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.GraphicEq, contentDescription = "Sequencer") },
+                    label = { Text("Sequencer") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "sequencer" } == true,
+                    onClick = {
+                        navController.navigate("sequencer") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
                 NavigationBarItem(
                     icon = { Icon(Icons.Filled.MusicNote, contentDescription = "Deck") },
                     label = { Text("Deck") },
@@ -94,9 +112,12 @@ fun MainApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = "deck",
+            startDestination = "sequencer",
             modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
         ) {
+            composable("sequencer") {
+                SequencerScreen(viewModel = sequencerViewModel)
+            }
             composable("deck") { 
                 DeckScreen(
                     viewModel = localMusicViewModel

@@ -100,6 +100,9 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     private val _beatLevel = MutableStateFlow(0f)
     val beatLevel: StateFlow<Float> = _beatLevel.asStateFlow()
 
+    private val _visualizerBands = MutableStateFlow(FloatArray(16))
+    val visualizerBands: StateFlow<FloatArray> = _visualizerBands.asStateFlow()
+
     // Equalizer state: band frequencies and levels
     private val _equalizerBands = MutableStateFlow<List<EqualizerBand>>(emptyList())
     val equalizerBands: StateFlow<List<EqualizerBand>> = _equalizerBands.asStateFlow()
@@ -202,6 +205,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             kotlinx.coroutines.flow.combine(
                 volume, ch1Level, ch2Level, masterLevel, isShuffle, isLoop, isAutoDjEnabled, currentSkin, equalizerBands, crossfader, pitch
             ) { values ->
+                @Suppress("UNCHECKED_CAST")
                 val bands = values[8] as List<EqualizerBand>
                 AppSettings(
                     volume = values[0] as Float,
@@ -567,6 +571,19 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                             val avgBass = bassSum / numBins
                             val normalizedBeat = (avgBass / 40f).coerceIn(0f, 1f)
                             _beatLevel.value = normalizedBeat
+
+                            val bandsCount = 16
+                            val newBands = FloatArray(bandsCount)
+                            for (i in 0 until bandsCount) {
+                                val idx = (i + 1) * 2
+                                if (idx + 1 < it.size) {
+                                    val r = it[idx].toFloat()
+                                    val im = it[idx + 1].toFloat()
+                                    val mag = Math.sqrt((r * r + im * im).toDouble()).toFloat()
+                                    newBands[i] = (mag / 32f).coerceIn(0f, 1f)
+                                }
+                            }
+                            _visualizerBands.value = newBands
                         }
                     }
                 }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, true)
@@ -653,11 +670,32 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             while (true) {
                 mediaPlayer?.let { player ->
                     if (player.isPlaying) {
-                        _playbackPosition.value = player.currentPosition
-                        updateCurrentLyricsLine(player.currentPosition)
+                        val pos = player.currentPosition
+                        _playbackPosition.value = pos
+                        updateCurrentLyricsLine(pos)
+
+                        // If FFT isn't returning data or visualizer is silent
+                        val currentBands = _visualizerBands.value
+                        if (currentBands.all { it == 0f } || _audioLevel.value == 0f) {
+                            val synthAudio = (0.35f + 0.45f * kotlin.math.sin(pos / 150.0).toFloat()).coerceIn(0.15f, 0.95f)
+                            val synthBeat = if ((pos / 380) % 2 == 0) 0.85f else 0.25f
+                            _audioLevel.value = synthAudio
+                            _beatLevel.value = synthBeat
+
+                            val bands = FloatArray(16)
+                            for (i in 0 until 16) {
+                                val wave = kotlin.math.sin((pos / 120.0) + i * 0.45).toFloat() * 0.5f + 0.5f
+                                bands[i] = (synthAudio * wave).coerceIn(0.1f, 1.0f)
+                            }
+                            _visualizerBands.value = bands
+                        }
+                    } else {
+                        _audioLevel.value = 0f
+                        _beatLevel.value = 0f
+                        _visualizerBands.value = FloatArray(16)
                     }
                 }
-                delay(500)
+                delay(100)
             }
         }
     }
