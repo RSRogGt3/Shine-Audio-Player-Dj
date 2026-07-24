@@ -19,7 +19,8 @@ enum class InstrumentType(val displayName: String, val icon: String, val default
     BASS("Sub Bass", "🎸", 1.0f),
     SYNTH("Synth Lead", "🎹", 1.0f),
     PERC("Percussion", "🔔", 1.0f),
-    FX("Sound FX", "⚡", 1.0f)
+    FX("Sound FX", "⚡", 1.0f),
+    SAMPLE("Custom Sample", "🎤", 1.0f)
 }
 
 class SequencerAudioEngine {
@@ -32,8 +33,10 @@ class SequencerAudioEngine {
     init {
         // Pre-render default sounds
         InstrumentType.values().forEach { instrument ->
-            // Precompute pitch 1.0x
-            generateBuffer(instrument, 1.0f)
+            if (instrument != InstrumentType.SAMPLE) {
+                // Precompute pitch 1.0x
+                generateBuffer(instrument, 1.0f)
+            }
         }
     }
 
@@ -47,6 +50,7 @@ class SequencerAudioEngine {
             InstrumentType.BASS -> 180
             InstrumentType.SYNTH -> 180
             InstrumentType.FX -> 220
+            InstrumentType.SAMPLE -> 300
         }
 
         val numSamples = (sampleRate * durationMs / 1000)
@@ -110,6 +114,11 @@ class SequencerAudioEngine {
                     (sin(2f * PI.toFloat() * freq * t) * env)
                 }
 
+                InstrumentType.SAMPLE -> {
+                    val freq = 440f * pitch
+                    val env = exp(-progress * 4f)
+                    (sin(2f * PI.toFloat() * freq * t) * env)
+                }
                 InstrumentType.FX -> {
                     val freq = 100f + progress * 800f * pitch
                     val env = exp(-progress * 2f)
@@ -227,19 +236,35 @@ class SequencerAudioEngine {
         distortion: Float = 0.0f,
         delayMix: Float = 0.0f,
         reverbMix: Float = 0.0f,
-        filterCutoff: Float = 1.0f
+        filterCutoff: Float = 1.0f,
+        isBassKilled: Boolean = false,
+        isMidKilled: Boolean = false,
+        isHighKilled: Boolean = false,
+        samplePath: String? = null
     ) {
         if (volume <= 0.01f) return
 
+        // Quick check for instrument class vs kill switches
+        if (isBassKilled && (type == InstrumentType.KICK || type == InstrumentType.BASS)) return
+        if (isMidKilled && (type == InstrumentType.SNARE || type == InstrumentType.CLAP || type == InstrumentType.PERC || type == InstrumentType.SYNTH)) return
+        if (isHighKilled && (type == InstrumentType.HIHAT || type == InstrumentType.FX)) return
+
         scope.launch {
             try {
-                val baseSamples = generateFloatSamples(type, pitch)
+                val baseSamples = if (type == InstrumentType.SAMPLE && samplePath != null) { AudioDecoder.decodeToFloatArray(samplePath, sampleRate, pitch) ?: generateFloatSamples(type, pitch) } else { generateFloatSamples(type, pitch) }
+                
+                // Adjust filter cutoff or attenuation if mid/high kills active on synth/kick
+                var effectiveCutoff = filterCutoff
+                if (isHighKilled) {
+                    effectiveCutoff = effectiveCutoff.coerceAtMost(0.35f)
+                }
+                
                 val processedSamples = applyAudioEffects(
                     samples = baseSamples,
                     distortion = distortion,
                     delayMix = delayMix,
                     reverbMix = reverbMix,
-                    filterCutoff = filterCutoff
+                    filterCutoff = effectiveCutoff
                 )
                 val pcmBytes = convertFloatToPcmBytes(processedSamples)
 

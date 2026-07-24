@@ -1,0 +1,1 @@
+sed -i 's/val musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)/val musicDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MUSIC) ?: context.cacheDir/' ./app/src/main/java/com/example/ui/screens/AudioRecorderComponent.kt

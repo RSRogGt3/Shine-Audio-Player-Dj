@@ -32,6 +32,8 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.DeckScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.GeneratorScreen
+import com.example.ui.viewmodels.MusicViewModel
 import com.example.ui.screens.SequencerScreen
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.SequencerViewModel
@@ -57,6 +59,7 @@ class MainActivity : ComponentActivity() {
 fun MainApp() {
     val navController = rememberNavController()
     val localMusicViewModel: LocalMusicViewModel = viewModel()
+    val musicViewModel: MusicViewModel = viewModel()
     val sequencerViewModel: SequencerViewModel = viewModel()
 
     Scaffold(
@@ -65,6 +68,20 @@ fun MainApp() {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
 
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
+                    label = { Text("AI Music") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
+                    onClick = {
+                        navController.navigate("generator") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
                 NavigationBarItem(
                     icon = { Icon(Icons.Filled.GraphicEq, contentDescription = "Sequencer") },
                     label = { Text("Sequencer") },
@@ -80,11 +97,39 @@ fun MainApp() {
                     }
                 )
                 NavigationBarItem(
+                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
+                    label = { Text("AI Music") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
+                    onClick = {
+                        navController.navigate("generator") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+                NavigationBarItem(
                     icon = { Icon(Icons.Filled.MusicNote, contentDescription = "Deck") },
                     label = { Text("Deck") },
                     selected = currentDestination?.hierarchy?.any { it.route == "deck" } == true,
                     onClick = {
                         navController.navigate("deck") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
+                    label = { Text("AI Music") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
+                    onClick = {
+                        navController.navigate("generator") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
@@ -124,6 +169,7 @@ fun MainApp() {
                 ) 
             }
             composable("library") { LibraryScreen(localMusicViewModel) }
+            composable("generator") { GeneratorScreen(musicViewModel) }
         }
     }
 }

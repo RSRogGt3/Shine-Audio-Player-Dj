@@ -1,0 +1,1 @@
+sed -i 's/val viewModel = LocalMusicViewModel()/val viewModel = LocalMusicViewModel(androidx.test.core.app.ApplicationProvider.getApplicationContext())/' app/src/test/java/com/example/DeckScreenScreenshotTest.kt

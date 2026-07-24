@@ -1,0 +1,2 @@
+sed -i 's/val filterCutoff: Float = 1.0f,/val filterCutoff: Float = 1.0f,\n    val customSamplePath: String? = null,/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt
+sed -i 's/result = 31 \* result + isHighKilled.hashCode()/result = 31 * result + isHighKilled.hashCode()\n        result = 31 * result + (customSamplePath?.hashCode() ?: 0)/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt

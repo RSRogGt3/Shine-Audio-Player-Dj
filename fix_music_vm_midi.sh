@@ -1,0 +1,1 @@
+sed -i '/data class Success(val base64Audio: String) : MusicUiState()/a \    data class MidiSuccess(val midiFilePath: String) : MusicUiState()' app/src/main/java/com/example/ui/viewmodels/MusicViewModel.kt

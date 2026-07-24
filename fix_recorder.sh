@@ -1,0 +1,1 @@
+sed -i 's/val file = File(context.cacheDir, "record_\$timestamp.\$extension")/val musicDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_MUSIC)\n                            val file = File(musicDir, "record_$timestamp.$extension")/' ./app/src/main/java/com/example/ui/screens/AudioRecorderComponent.kt

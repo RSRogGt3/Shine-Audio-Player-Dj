@@ -1,0 +1,2 @@
+sed -i 's/fun generateTrack(prompt: String, apiKey: String)/fun generateTrack(prompt: String, apiKey: String, isShortClip: Boolean = true)/' app/src/main/java/com/example/ui/viewmodels/MusicViewModel.kt
+sed -i 's/val response = RetrofitClient.service.generateContent("lyria-3-clip-preview", apiKey, request)/val model = if (isShortClip) "lyria-3-clip-preview" else "lyria-3-pro-preview"\n                val response = RetrofitClient.service.generateContent(model, apiKey, request)/' app/src/main/java/com/example/ui/viewmodels/MusicViewModel.kt

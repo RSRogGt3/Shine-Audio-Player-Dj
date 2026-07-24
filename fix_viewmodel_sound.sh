@@ -1,0 +1,3 @@
+sed -i 's/isHighKilled = _isMasterHighKilled.value || track.isHighKilled/isHighKilled = _isMasterHighKilled.value || track.isHighKilled,\n                            samplePath = track.customSamplePath/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt
+sed -i 's/filterCutoff = track.filterCutoff/filterCutoff = track.filterCutoff,\n                        samplePath = track.customSamplePath/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt
+sed -i 's/pan = targetPan/pan = targetPan,\n                samplePath = track.customSamplePath/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt

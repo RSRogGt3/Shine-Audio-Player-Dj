@@ -1,0 +1,1 @@
+sed -i '/fun toggleStep(trackId/i \    fun setTrackSamplePath(trackId: String, path: String) {\n        _tracks.value = _tracks.value.map {\n            if (it.id == trackId) it.copy(customSamplePath = path) else it\n        }\n    }\n' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt

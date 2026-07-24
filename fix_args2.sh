@@ -1,0 +1,1 @@
+sed -i 's/isHighKilled = _isMasterHighKilled.value || track.isHighKilled/isHighKilled = _isMasterHighKilled.value || track.isHighKilled,\n                            samplePath = track.customSamplePath/' app/src/main/java/com/example/ui/viewmodels/SequencerViewModel.kt

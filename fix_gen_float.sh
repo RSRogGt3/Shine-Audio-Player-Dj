@@ -1,0 +1,1 @@
+sed -i '/InstrumentType.FX -> {/i \                InstrumentType.SAMPLE -> {\n                    val freq = 440f * pitch\n                    val env = exp(-progress * 4f)\n                    (sin(2f * PI.toFloat() * freq * t) * env)\n                }' app/src/main/java/com/example/audio/SequencerAudioEngine.kt

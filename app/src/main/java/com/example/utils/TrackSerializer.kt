@@ -22,7 +22,10 @@ data class SerializableTrackData(
     val distortion: Float = 0.0f,
     val delayMix: Float = 0.0f,
     val reverbMix: Float = 0.0f,
-    val filterCutoff: Float = 1.0f
+    val filterCutoff: Float = 1.0f,
+    val customSamplePath: String? = null,
+    val sampleOriginalBpm: Int = 120,
+    val isTempoSynced: Boolean = true
 )
 
 object TrackSerializer {
@@ -45,7 +48,10 @@ object TrackSerializer {
                 distortion = track.distortion,
                 delayMix = track.delayMix,
                 reverbMix = track.reverbMix,
-                filterCutoff = track.filterCutoff
+                filterCutoff = track.filterCutoff,
+                customSamplePath = track.customSamplePath,
+                sampleOriginalBpm = track.sampleOriginalBpm,
+                isTempoSynced = track.isTempoSynced
             )
         }
         return jsonInstance.encodeToString(
@@ -94,7 +100,10 @@ object TrackSerializer {
                     distortion = item.distortion,
                     delayMix = item.delayMix,
                     reverbMix = item.reverbMix,
-                    filterCutoff = item.filterCutoff
+                    filterCutoff = item.filterCutoff,
+                    customSamplePath = item.customSamplePath,
+                    sampleOriginalBpm = item.sampleOriginalBpm,
+                    isTempoSynced = item.isTempoSynced
                 )
             }
         } catch (e: Exception) {

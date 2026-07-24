@@ -1,0 +1,1 @@
+sed -i 's/onApplyStylePreset = { preset -> viewModel.applyTrackStylePreset(track.id, preset) }/onApplyStylePreset = { preset -> viewModel.applyTrackStylePreset(track.id, preset) },\n                            onSampleRecorded = { path -> viewModel.setTrackSamplePath(track.id, path) }/' app/src/main/java/com/example/ui/screens/SequencerScreen.kt

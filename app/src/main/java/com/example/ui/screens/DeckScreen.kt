@@ -55,6 +55,13 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
     val crossfader by viewModel.crossfader.collectAsState()
     val pitch by viewModel.pitch.collectAsState()
     val equalizerBands by viewModel.equalizerBands.collectAsState()
+    val isBassKilled by viewModel.isBassKilled.collectAsState()
+    val isMidKilled by viewModel.isMidKilled.collectAsState()
+    val isHighKilled by viewModel.isHighKilled.collectAsState()
+    val activeLoopBeats by viewModel.activeLoopBeats.collectAsState()
+    val bpm by viewModel.bpm.collectAsState()
+    val aiCopilotAdvice by viewModel.aiCopilotAdvice.collectAsState()
+    val isLoadingAiAdvice by viewModel.isLoadingAiAdvice.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val beatLevel by viewModel.beatLevel.collectAsState()
     val playbackDuration by viewModel.playbackDuration.collectAsState()
@@ -66,6 +73,7 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
     val currentSkin by viewModel.currentSkin.collectAsState()
     
     val context = LocalContext.current
+    var showExportDialog by remember { mutableStateOf(false) }
     var showLyricsDialog by remember { mutableStateOf(false) }
 
     val backgrounds = remember {
@@ -126,13 +134,24 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
-            Text(
-                text = "Hauptdeck",
-                style = MaterialTheme.typography.headlineMedium,
-                color = Color.White,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Hauptdeck",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(
+                    onClick = { showExportDialog = true },
+                    modifier = Modifier.background(Color(0xFFE040FB), CircleShape)
+                ) {
+                    Icon(Icons.Filled.Mic, contentDescription = "Export Mix", tint = Color.Black)
+                }
+            }
 
             // Skin Selector
             SkinSelector(
@@ -202,6 +221,18 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Loop Machine Section
+            LoopMachineSection(
+                activeLoopBeats = activeLoopBeats,
+                onLoopSelect = { beats -> viewModel.setLoopMachine(beats) },
+                bpm = bpm,
+                onTapTempo = { viewModel.tapTempo() },
+                primaryColor = primaryColor,
+                surfaceColor = surfaceColor
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             // Mixer Section
             MixerSection(
                 ch1Level = ch1Level,
@@ -220,7 +251,51 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 surfaceColor = surfaceColor
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // ✨ AI DJ Co-Pilot Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = primaryColor.copy(alpha = 0.15f)),
+                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = primaryColor)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("✨ KI DJ Co-Pilot", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { viewModel.fetchAiCopilotAdvice() },
+                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor, contentColor = Color.Black),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("ai_copilot_button")
+                        ) {
+                            if (isLoadingAiAdvice) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
+                            } else {
+                                Text("Tipp Anfragen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                    if (!aiCopilotAdvice.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = aiCopilotAdvice ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Equalizer Section
             if (equalizerBands.isNotEmpty()) {
@@ -229,6 +304,13 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                     isPlaying = isPlaying,
                     playbackPosition = playbackPosition,
                     audioLevel = audioLevel,
+                    isBassKilled = isBassKilled,
+                    isMidKilled = isMidKilled,
+                    isHighKilled = isHighKilled,
+                    onToggleBassKill = { viewModel.toggleBassKill() },
+                    onToggleMidKill = { viewModel.toggleMidKill() },
+                    onToggleHighKill = { viewModel.toggleHighKill() },
+                    onResetKills = { viewModel.resetAllKills() },
                     primaryColor = primaryColor,
                     surfaceColor = surfaceColor,
                     onBandChange = { band, level -> viewModel.setEqualizerBandLevel(band, level.toShort()) }
@@ -245,6 +327,16 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 onDismiss = { showLyricsDialog = false },
                 backgroundColor = backgroundColor
             )
+        }
+
+        if (showExportDialog) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showExportDialog = false }) {
+                AudioRecorderComponent(
+                    onRecordingFinished = {
+                        showExportDialog = false
+                    }
+                )
+            }
         }
     }
 }
@@ -974,12 +1066,67 @@ fun EqualizerSection(
     isPlaying: Boolean,
     playbackPosition: Int,
     audioLevel: Float,
+    isBassKilled: Boolean,
+    isMidKilled: Boolean,
+    isHighKilled: Boolean,
+    onToggleBassKill: () -> Unit,
+    onToggleMidKill: () -> Unit,
+    onToggleHighKill: () -> Unit,
+    onResetKills: () -> Unit,
     primaryColor: Color,
     surfaceColor: Color,
     onBandChange: (Short, Int) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Equalizer", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Equalizer & Kill-Knöpfe", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+            if (isBassKilled || isMidKilled || isHighKilled) {
+                TextButton(
+                    onClick = onResetKills,
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color.Red)
+                ) {
+                    Text("RESET ALL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Prominent DJ Frequency Band Kill Buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            KillButton(
+                label = "BASS KILL",
+                freqLabel = "20 - 300 Hz",
+                isKilled = isBassKilled,
+                activeColor = Color(0xFFFF1744),
+                onClick = onToggleBassKill,
+                modifier = Modifier.weight(1f)
+            )
+            KillButton(
+                label = "MID KILL",
+                freqLabel = "300 - 2.5k Hz",
+                isKilled = isMidKilled,
+                activeColor = Color(0xFFFFC400),
+                onClick = onToggleMidKill,
+                modifier = Modifier.weight(1f)
+            )
+            KillButton(
+                label = "HI KILL",
+                freqLabel = "2.5k - 20k Hz",
+                isKilled = isHighKilled,
+                activeColor = Color(0xFF00E5FF),
+                onClick = onToggleHighKill,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
         Spacer(modifier = Modifier.height(16.dp))
         
         Row(
@@ -1027,6 +1174,55 @@ fun EqualizerSection(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun KillButton(
+    label: String,
+    freqLabel: String,
+    isKilled: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (isKilled) activeColor else Color(0xFF222228),
+            contentColor = if (isKilled) Color.Black else Color.White
+        ),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(
+            width = if (isKilled) 2.dp else 1.dp,
+            color = if (isKilled) Color.White else Color.DarkGray
+        ),
+        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
+        modifier = modifier.testTag("kill_button_${label.lowercase().replace(" ", "_")}")
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .background(
+                            color = if (isKilled) Color.Black else Color.Gray,
+                            shape = CircleShape
+                        )
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = label,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = if (isKilled) "[OFF/KILLED]" else freqLabel,
+                fontSize = 9.sp,
+                color = if (isKilled) Color.Black.copy(alpha = 0.8f) else Color.Gray
+            )
         }
     }
 }
@@ -1092,4 +1288,80 @@ fun LyricsDialog(
         titleContentColor = Color.White,
         textContentColor = Color.White
     )
+}
+
+@Composable
+fun LoopMachineSection(
+    activeLoopBeats: Int?,
+    onLoopSelect: (Int) -> Unit,
+    bpm: Int,
+    onTapTempo: () -> Unit,
+    primaryColor: Color,
+    surfaceColor: Color
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = surfaceColor),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Loop, contentDescription = "Loop Machine", tint = primaryColor, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "LOOP MASCHINE",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+                
+                Button(
+                    onClick = onTapTempo,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2E3E), contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Text("TAP: $bpm BPM", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                val loopLengths = listOf(4, 8, 12, 16)
+                for (beats in loopLengths) {
+                    val isActive = activeLoopBeats == beats
+                    Button(
+                        onClick = { onLoopSelect(beats) },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isActive) primaryColor else Color(0xFF2E2E3E),
+                            contentColor = if (isActive) Color.Black else Color.White
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = "${beats}er",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

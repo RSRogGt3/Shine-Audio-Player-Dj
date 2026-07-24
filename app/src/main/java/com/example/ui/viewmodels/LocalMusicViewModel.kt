@@ -56,6 +56,18 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     private val _isLoop = MutableStateFlow(false)
     val isLoop: StateFlow<Boolean> = _isLoop.asStateFlow()
 
+    // DJ Loop Machine States
+    private val _activeLoopBeats = MutableStateFlow<Int?>(null) // e.g. 4, 8, 12, 16
+    val activeLoopBeats: StateFlow<Int?> = _activeLoopBeats.asStateFlow()
+
+    private val _bpm = MutableStateFlow(120) // Default 120 BPM
+    val bpm: StateFlow<Int> = _bpm.asStateFlow()
+
+    private var tapTimes = mutableListOf<Long>()
+
+    private var loopStartPositionMs: Int = 0
+    private var loopEndPositionMs: Int = 0
+
     private val _volume = MutableStateFlow(1f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
@@ -102,6 +114,22 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _visualizerBands = MutableStateFlow(FloatArray(16))
     val visualizerBands: StateFlow<FloatArray> = _visualizerBands.asStateFlow()
+
+    // Frequency Band Kill States
+    private val _isBassKilled = MutableStateFlow(false)
+    val isBassKilled: StateFlow<Boolean> = _isBassKilled.asStateFlow()
+
+    private val _isMidKilled = MutableStateFlow(false)
+    val isMidKilled: StateFlow<Boolean> = _isMidKilled.asStateFlow()
+
+    private val _isHighKilled = MutableStateFlow(false)
+    val isHighKilled: StateFlow<Boolean> = _isHighKilled.asStateFlow()
+
+    private val _aiCopilotAdvice = MutableStateFlow<String?>(null)
+    val aiCopilotAdvice: StateFlow<String?> = _aiCopilotAdvice.asStateFlow()
+
+    private val _isLoadingAiAdvice = MutableStateFlow(false)
+    val isLoadingAiAdvice: StateFlow<Boolean> = _isLoadingAiAdvice.asStateFlow()
 
     // Equalizer state: band frequencies and levels
     private val _equalizerBands = MutableStateFlow<List<EqualizerBand>>(emptyList())
@@ -303,6 +331,55 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         _isAutoDjEnabled.value = !_isAutoDjEnabled.value
     }
 
+    fun setLoopMachine(beats: Int) {
+        if (_activeLoopBeats.value == beats) {
+            // Turn off loop
+            _activeLoopBeats.value = null
+            loopStartPositionMs = 0
+            loopEndPositionMs = 0
+        } else {
+            // Turn on loop
+            val currentPos = mediaPlayer?.currentPosition ?: 0
+            val currentBpm = _bpm.value
+            val msPerBeat = 60000 / currentBpm
+            val loopDurationMs = beats * msPerBeat
+            loopStartPositionMs = currentPos
+            loopEndPositionMs = currentPos + loopDurationMs
+            _activeLoopBeats.value = beats
+        }
+    }
+
+    fun tapTempo() {
+        val now = System.currentTimeMillis()
+        if (tapTimes.isNotEmpty() && now - tapTimes.last() > 2000) {
+            tapTimes.clear() // Reset if it's been more than 2 seconds since last tap
+        }
+        tapTimes.add(now)
+        
+        if (tapTimes.size > 1) {
+            // Calculate BPM based on the last few taps (up to 4)
+            val tapsToConsider = tapTimes.takeLast(4)
+            var totalDuration = 0L
+            for (i in 1 until tapsToConsider.size) {
+                totalDuration += tapsToConsider[i] - tapsToConsider[i - 1]
+            }
+            val averageDurationMs = totalDuration / (tapsToConsider.size - 1)
+            
+            if (averageDurationMs > 0) {
+                val calculatedBpm = (60000 / averageDurationMs).toInt()
+                // Clamp BPM to reasonable values
+                _bpm.value = calculatedBpm.coerceIn(40, 300)
+                
+                // If a loop is active, recalculate its duration based on new BPM
+                val activeBeats = _activeLoopBeats.value
+                if (activeBeats != null) {
+                    val msPerBeat = 60000 / _bpm.value
+                    loopEndPositionMs = loopStartPositionMs + (activeBeats * msPerBeat)
+                }
+            }
+        }
+    }
+
     fun pickNextTrackWithAi(context: Context) {
         val current = _currentTrack.value
         val tracks = _localTracks.value
@@ -314,7 +391,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                 val prompt = "Current track is ${current?.title} by ${current?.artist}. Available tracks: ${tracks.joinToString { it.title }}. Pick the best next track to play. ONLY reply with the exact track title, nothing else."
                 val content = com.example.api.Content(parts = listOf(com.example.api.Part(text = prompt)), role = "user")
                 val request = com.example.api.GenerateContentRequest(contents = listOf(content), generationConfig = null, tools = null, systemInstruction = null)
-                val response = com.example.api.RetrofitClient.service.generateContent("gemini-1.5-flash", apiKey, request)
+                val response = com.example.api.RetrofitClient.service.generateContent("gemini-3.1-flash-lite", apiKey, request)
                 val reply = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() ?: ""
                 
                 val nextTrack = tracks.find { it.title.equals(reply, ignoreCase = true) } ?: tracks.random()
@@ -338,7 +415,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                 val prompt = "Provide ONLY the lyrics for the song '${current.title}' by '${current.artist}'. Do not add any conversational text. If you don't know it or it's a made up song, generate plausible lyrics for a song with that title. ONLY reply with the lyrics."
                 val content = com.example.api.Content(parts = listOf(com.example.api.Part(text = prompt)), role = "user")
                 val request = com.example.api.GenerateContentRequest(contents = listOf(content), generationConfig = null, tools = null, systemInstruction = null)
-                val response = com.example.api.RetrofitClient.service.generateContent("gemini-1.5-flash", apiKey, request)
+                val response = com.example.api.RetrofitClient.service.generateContent("gemini-3.1-flash-lite", apiKey, request)
                 val reply = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() ?: "Lyrics not found."
                 
                 _lyrics.value = reply
@@ -594,6 +671,62 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun toggleBassKill() {
+        _isBassKilled.value = !_isBassKilled.value
+        applyEqKillsToHardware()
+    }
+
+    fun toggleMidKill() {
+        _isMidKilled.value = !_isMidKilled.value
+        applyEqKillsToHardware()
+    }
+
+    fun toggleHighKill() {
+        _isHighKilled.value = !_isHighKilled.value
+        applyEqKillsToHardware()
+    }
+
+    fun resetAllKills() {
+        _isBassKilled.value = false
+        _isMidKilled.value = false
+        _isHighKilled.value = false
+        applyEqKillsToHardware()
+    }
+
+    private fun applyEqKillsToHardware() {
+        val bands = _equalizerBands.value
+        if (bands.isEmpty()) return
+        val count = bands.size
+        bands.forEachIndexed { idx, band ->
+            val ratio = idx.toFloat() / (count - 1).coerceAtLeast(1)
+            val isKilled = when {
+                ratio < 0.35f -> _isBassKilled.value
+                ratio < 0.70f -> _isMidKilled.value
+                else -> _isHighKilled.value
+            }
+            val targetLevel = if (isKilled) band.minLevel else 0.toShort()
+            try {
+                equalizer?.setBandLevel(band.band, targetLevel)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun fetchAiCopilotAdvice() {
+        val trackName = _currentTrack.value?.title ?: "DJ Session Track"
+        viewModelScope.launch {
+            _isLoadingAiAdvice.value = true
+            val advice = com.example.ai.GeminiAiManager.getDjCopilotAdvice(
+                trackTitle = trackName,
+                currentBpm = (120 * _pitch.value).toInt(),
+                targetGenre = _currentSkin.value.name
+            )
+            _aiCopilotAdvice.value = advice
+            _isLoadingAiAdvice.value = false
+        }
+    }
+
     fun setEqualizerBandLevel(band: Short, level: Short) {
         try {
             equalizer?.setBandLevel(band, level)
@@ -671,7 +804,14 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                 mediaPlayer?.let { player ->
                     if (player.isPlaying) {
                         val pos = player.currentPosition
-                        _playbackPosition.value = pos
+                        val activeLoop = _activeLoopBeats.value
+                        if (activeLoop != null && loopEndPositionMs > 0 && pos >= loopEndPositionMs) {
+                            player.seekTo(loopStartPositionMs)
+                            _playbackPosition.value = loopStartPositionMs
+                        } else {
+                            _playbackPosition.value = pos
+                        }
+                        
                         updateCurrentLyricsLine(pos)
 
                         // If FFT isn't returning data or visualizer is silent

@@ -23,7 +23,7 @@ class DeckScreenScreenshotTest {
 
   @Test
   fun deck_screen_screenshot() {
-    val viewModel = LocalMusicViewModel()
+    val viewModel = LocalMusicViewModel(androidx.test.core.app.ApplicationProvider.getApplicationContext())
     composeTestRule.setContent {
       MyApplicationTheme {
         DeckScreen(viewModel = viewModel)

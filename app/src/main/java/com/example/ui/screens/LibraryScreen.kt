@@ -64,6 +64,7 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
     val isLoading by viewModel.isLoading.collectAsState()
     
     var searchQuery by remember { mutableStateOf("") }
+    var showRecorder by remember { mutableStateOf(false) }
     val filteredTracks = remember(localTracks, searchQuery) {
         if (searchQuery.isBlank()) {
             localTracks
@@ -297,14 +298,28 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                         }
                     }
                 } else {
-                    // Refresh action
-                    TextButton(
-                        onClick = { viewModel.fetchLocalMusic(context) },
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 0.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Aktualisieren", modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Bibliothek aktualisieren", style = MaterialTheme.typography.labelMedium)
+                        TextButton(
+                            onClick = { viewModel.fetchLocalMusic(context) },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "Aktualisieren", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Aktualisieren", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        TextButton(
+                            onClick = { showRecorder = true },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Filled.Mic, contentDescription = "Aufnehmen", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Neue Aufnahme", style = MaterialTheme.typography.labelMedium)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -366,6 +381,18 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                     onSkipNext = { viewModel.playNext(context) },
                     onSkipPrev = { viewModel.playPrevious(context) },
                     onSeek = { viewModel.seekTo(it) }
+                )
+            }
+        }
+
+        if (showRecorder) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showRecorder = false }) {
+                AudioRecorderComponent(
+                    onRecordingFinished = {
+                        // After recording, we can refresh the list
+                        viewModel.fetchLocalMusic(context)
+                        showRecorder = false
+                    }
                 )
             }
         }

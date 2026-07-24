@@ -1,0 +1,1 @@
+sed -i 's/val baseSamples = generateFloatSamples(type, pitch)/val baseSamples = if (type == InstrumentType.SAMPLE \&\& samplePath != null) { AudioDecoder.decodeToFloatArray(samplePath, sampleRate, pitch) ?: generateFloatSamples(type, pitch) } else { generateFloatSamples(type, pitch) }/' app/src/main/java/com/example/audio/SequencerAudioEngine.kt
