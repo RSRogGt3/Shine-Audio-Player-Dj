@@ -95,6 +95,12 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     private val _isSampleLibraryLoaded = MutableStateFlow(false)
     val isSampleLibraryLoaded: StateFlow<Boolean> = _isSampleLibraryLoaded.asStateFlow()
 
+    private val _aiQueue = MutableStateFlow<List<LocalTrack>>(emptyList())
+    val aiQueue: StateFlow<List<LocalTrack>> = _aiQueue.asStateFlow()
+
+    private val _isAiQueueLoading = MutableStateFlow(false)
+    val isAiQueueLoading: StateFlow<Boolean> = _isAiQueueLoading.asStateFlow()
+
     private val _lyrics = MutableStateFlow<String?>(null)
     val lyrics: StateFlow<String?> = _lyrics.asStateFlow()
 
@@ -124,12 +130,6 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _isHighKilled = MutableStateFlow(false)
     val isHighKilled: StateFlow<Boolean> = _isHighKilled.asStateFlow()
-
-    private val _aiCopilotAdvice = MutableStateFlow<String?>(null)
-    val aiCopilotAdvice: StateFlow<String?> = _aiCopilotAdvice.asStateFlow()
-
-    private val _isLoadingAiAdvice = MutableStateFlow(false)
-    val isLoadingAiAdvice: StateFlow<Boolean> = _isLoadingAiAdvice.asStateFlow()
 
     // Equalizer state: band frequencies and levels
     private val _equalizerBands = MutableStateFlow<List<EqualizerBand>>(emptyList())
@@ -319,16 +319,24 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun toggleShuffle() {
+    fun toggleShuffle(context: Context? = null) {
         _isShuffle.value = !_isShuffle.value
+        if (_isShuffle.value && _aiQueue.value.isNotEmpty()) {
+            _aiQueue.value = _aiQueue.value.shuffled()
+        } else {
+            ensureAiQueue(context)
+        }
     }
 
     fun toggleLoop() {
         _isLoop.value = !_isLoop.value
     }
 
-    fun toggleAutoDj() {
+    fun toggleAutoDj(context: Context? = null) {
         _isAutoDjEnabled.value = !_isAutoDjEnabled.value
+        if (_isAutoDjEnabled.value && _aiQueue.value.isEmpty()) {
+            regenerateAiQueue(context)
+        }
     }
 
     fun setLoopMachine(beats: Int) {
@@ -380,26 +388,104 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun pickNextTrackWithAi(context: Context) {
-        val current = _currentTrack.value
+    /**
+     * Ensures that _aiQueue always maintains exactly 5 upcoming tracks.
+     */
+    fun ensureAiQueue(context: Context? = null) {
         val tracks = _localTracks.value
         if (tracks.isEmpty()) return
-        
+
+        val currentQueue = _aiQueue.value.toMutableList()
+        if (currentQueue.size >= 5) return
+
+        val current = _currentTrack.value
+        val queuedIds = currentQueue.map { it.id }.toSet()
+
+        // Candidate tracks excluding currently playing and already queued items
+        var candidates = tracks.filter { it.id != current?.id && !queuedIds.contains(it.id) }
+        if (candidates.isEmpty()) {
+            candidates = tracks.filter { !queuedIds.contains(it.id) }
+        }
+        if (candidates.isEmpty()) {
+            candidates = tracks
+        }
+
+        val needed = 5 - currentQueue.size
+        val pool = if (_isShuffle.value) candidates.shuffled() else candidates
+        val toAdd = pool.take(needed)
+        currentQueue.addAll(toAdd)
+
+        _aiQueue.value = currentQueue.take(5)
+    }
+
+    /**
+     * Uses Gemini AI to build a smart, energy-matched setlist of 5 upcoming tracks.
+     */
+    fun regenerateAiQueue(context: Context? = null) {
+        val tracks = _localTracks.value
+        if (tracks.isEmpty()) return
+
+        val current = _currentTrack.value
+        _isAiQueueLoading.value = true
+
         viewModelScope.launch {
-             try {
+            try {
                 val apiKey = com.example.BuildConfig.GEMINI_API_KEY
-                val prompt = "Current track is ${current?.title} by ${current?.artist}. Available tracks: ${tracks.joinToString { it.title }}. Pick the best next track to play. ONLY reply with the exact track title, nothing else."
+                val prompt = "Current track: '${current?.title ?: "None"}'. Available library tracks: ${tracks.map { "'${it.title}'" }}. Select a DJ setlist of EXACTLY 5 tracks in ideal transition order. ONLY reply with a JSON array of exact titles e.g. [\"Song A\", \"Song B\", \"Song C\", \"Song D\", \"Song E\"]. No extra markdown."
+
                 val content = com.example.api.Content(parts = listOf(com.example.api.Part(text = prompt)), role = "user")
                 val request = com.example.api.GenerateContentRequest(contents = listOf(content), generationConfig = null, tools = null, systemInstruction = null)
                 val response = com.example.api.RetrofitClient.service.generateContent("gemini-3.1-flash-lite", apiKey, request)
                 val reply = response.candidates.firstOrNull()?.content?.parts?.firstOrNull()?.text?.trim() ?: ""
-                
-                val nextTrack = tracks.find { it.title.equals(reply, ignoreCase = true) } ?: tracks.random()
-                playTrack(context, nextTrack)
-             } catch (e: Exception) {
-                // fallback
-                playNext(context)
-             }
+
+                val newQueue = mutableListOf<LocalTrack>()
+                val candidates = tracks.toMutableList()
+                if (_isShuffle.value) candidates.shuffle()
+
+                // Extract titles from JSON array response
+                val titleMatches = Regex("\"([^\"]+)\"").findAll(reply).map { it.groupValues[1] }.toList()
+                for (title in titleMatches) {
+                    val found = candidates.find { it.title.contains(title, ignoreCase = true) || title.contains(it.title, ignoreCase = true) }
+                    if (found != null && !newQueue.contains(found)) {
+                        newQueue.add(found)
+                    }
+                    if (newQueue.size >= 5) break
+                }
+
+                // Fill up to 5 tracks if needed
+                for (track in candidates) {
+                    if (newQueue.size >= 5) break
+                    if (!newQueue.contains(track) && track.id != current?.id) {
+                        newQueue.add(track)
+                    }
+                }
+
+                _aiQueue.value = newQueue.take(5)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Fallback fill
+                val candidates = tracks.filter { it.id != current?.id }.let { if (_isShuffle.value) it.shuffled() else it }
+                _aiQueue.value = candidates.take(5)
+            } finally {
+                _isAiQueueLoading.value = false
+            }
+        }
+    }
+
+    fun removeTrackFromAiQueue(trackId: Long, context: Context? = null) {
+        _aiQueue.value = _aiQueue.value.filter { it.id != trackId }
+        ensureAiQueue(context)
+    }
+
+    fun pickNextTrackWithAi(context: Context) {
+        val currentQueue = _aiQueue.value
+        if (currentQueue.isNotEmpty()) {
+            val nextTrack = currentQueue.first()
+            _aiQueue.value = currentQueue.drop(1)
+            playTrack(context, nextTrack)
+            ensureAiQueue(context)
+        } else {
+            playNext(context)
         }
     }
 
@@ -466,10 +552,11 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             }
             _localTracks.value = tracks
             _isLoading.value = false
+            ensureAiQueue(context)
         }
     }
 
-    fun loadSampleLibrary() {
+    fun loadSampleLibrary(context: Context? = null) {
         _isSampleLibraryLoaded.value = true
         _localTracks.value = listOf(
             LocalTrack(
@@ -481,19 +568,55 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             ),
             LocalTrack(
                 id = -2,
-                title = "SoundHelix Synth Symphony 2",
+                title = "SoundHelix Deep Bass Groove 2",
                 artist = "SoundHelix Archive",
                 uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
                 duration = 423000
             ),
             LocalTrack(
                 id = -3,
-                title = "SoundHelix Synth Symphony 3",
+                title = "SoundHelix Chillout Ambient 3",
                 artist = "SoundHelix Archive",
                 uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
                 duration = 302000
+            ),
+            LocalTrack(
+                id = -4,
+                title = "SoundHelix Electro Pulse 4",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+                duration = 350000
+            ),
+            LocalTrack(
+                id = -5,
+                title = "SoundHelix Techno Drive 5",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+                duration = 380000
+            ),
+            LocalTrack(
+                id = -6,
+                title = "SoundHelix Funk Odyssey 6",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+                duration = 310000
+            ),
+            LocalTrack(
+                id = -7,
+                title = "SoundHelix Future Bounce 7",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3",
+                duration = 340000
+            ),
+            LocalTrack(
+                id = -8,
+                title = "SoundHelix Trance Elevation 8",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+                duration = 390000
             )
         )
+        regenerateAiQueue(context)
     }
 
     private val _currentLyricsLine = MutableStateFlow(0)
@@ -512,6 +635,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             mediaPlayer = null
             
             _currentTrack.value = track
+            removeTrackFromAiQueue(track.id, context)
             fetchLyrics() // Automatically fetch lyrics for the new track
             
             mediaPlayer = MediaPlayer().apply {
@@ -713,20 +837,6 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun fetchAiCopilotAdvice() {
-        val trackName = _currentTrack.value?.title ?: "DJ Session Track"
-        viewModelScope.launch {
-            _isLoadingAiAdvice.value = true
-            val advice = com.example.ai.GeminiAiManager.getDjCopilotAdvice(
-                trackTitle = trackName,
-                currentBpm = (120 * _pitch.value).toInt(),
-                targetGenre = _currentSkin.value.name
-            )
-            _aiCopilotAdvice.value = advice
-            _isLoadingAiAdvice.value = false
-        }
-    }
-
     fun setEqualizerBandLevel(band: Short, level: Short) {
         try {
             equalizer?.setBandLevel(band, level)
@@ -761,11 +871,22 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
 
     fun playNext(context: Context) {
         val tracks = _localTracks.value
-        val current = _currentTrack.value
         if (tracks.isEmpty()) return
 
+        val currentQueue = _aiQueue.value
+        if (currentQueue.isNotEmpty()) {
+            val nextTrack = currentQueue.first()
+            _aiQueue.value = currentQueue.drop(1)
+            playTrack(context, nextTrack)
+            ensureAiQueue(context)
+            return
+        }
+
+        val current = _currentTrack.value
         if (_isShuffle.value) {
-            playTrack(context, tracks.random())
+            val candidates = tracks.filter { it.id != current?.id }.ifEmpty { tracks }
+            playTrack(context, candidates.random())
+            ensureAiQueue(context)
             return
         }
 
@@ -776,6 +897,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             0
         }
         playTrack(context, tracks[nextIndex])
+        ensureAiQueue(context)
     }
 
     fun playPrevious(context: Context) {

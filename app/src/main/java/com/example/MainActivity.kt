@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -32,11 +30,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.DeckScreen
 import com.example.ui.screens.LibraryScreen
-import com.example.ui.screens.GeneratorScreen
-import com.example.ui.viewmodels.MusicViewModel
-import com.example.ui.screens.SequencerScreen
 import com.example.ui.viewmodels.LocalMusicViewModel
-import com.example.ui.viewmodels.SequencerViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,8 +53,6 @@ class MainActivity : ComponentActivity() {
 fun MainApp() {
     val navController = rememberNavController()
     val localMusicViewModel: LocalMusicViewModel = viewModel()
-    val musicViewModel: MusicViewModel = viewModel()
-    val sequencerViewModel: SequencerViewModel = viewModel()
 
     Scaffold(
         bottomBar = {
@@ -69,67 +61,11 @@ fun MainApp() {
                 val currentDestination = navBackStackEntry?.destination
 
                 NavigationBarItem(
-                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
-                    label = { Text("AI Music") },
-                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
-                    onClick = {
-                        navController.navigate("generator") {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.GraphicEq, contentDescription = "Sequencer") },
-                    label = { Text("Sequencer") },
-                    selected = currentDestination?.hierarchy?.any { it.route == "sequencer" } == true,
-                    onClick = {
-                        navController.navigate("sequencer") {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
-                    label = { Text("AI Music") },
-                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
-                    onClick = {
-                        navController.navigate("generator") {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-                NavigationBarItem(
                     icon = { Icon(Icons.Filled.MusicNote, contentDescription = "Deck") },
                     label = { Text("Deck") },
                     selected = currentDestination?.hierarchy?.any { it.route == "deck" } == true,
                     onClick = {
                         navController.navigate("deck") {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.AutoAwesome, contentDescription = "AI Music") },
-                    label = { Text("AI Music") },
-                    selected = currentDestination?.hierarchy?.any { it.route == "generator" } == true,
-                    onClick = {
-                        navController.navigate("generator") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
@@ -157,20 +93,17 @@ fun MainApp() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = "sequencer",
+            startDestination = "deck",
             modifier = Modifier.padding(innerPadding).consumeWindowInsets(innerPadding)
         ) {
-            composable("sequencer") {
-                SequencerScreen(viewModel = sequencerViewModel)
-            }
             composable("deck") { 
                 DeckScreen(
                     viewModel = localMusicViewModel
                 ) 
             }
             composable("library") { LibraryScreen(localMusicViewModel) }
-            composable("generator") { GeneratorScreen(musicViewModel) }
         }
     }
 }
+
 

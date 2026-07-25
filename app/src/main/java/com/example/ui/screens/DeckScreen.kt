@@ -58,10 +58,6 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
     val isBassKilled by viewModel.isBassKilled.collectAsState()
     val isMidKilled by viewModel.isMidKilled.collectAsState()
     val isHighKilled by viewModel.isHighKilled.collectAsState()
-    val activeLoopBeats by viewModel.activeLoopBeats.collectAsState()
-    val bpm by viewModel.bpm.collectAsState()
-    val aiCopilotAdvice by viewModel.aiCopilotAdvice.collectAsState()
-    val isLoadingAiAdvice by viewModel.isLoadingAiAdvice.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val beatLevel by viewModel.beatLevel.collectAsState()
     val playbackDuration by viewModel.playbackDuration.collectAsState()
@@ -219,19 +215,7 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 surfaceColor = surfaceColor
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
 
-            // Loop Machine Section
-            LoopMachineSection(
-                activeLoopBeats = activeLoopBeats,
-                onLoopSelect = { beats -> viewModel.setLoopMachine(beats) },
-                bpm = bpm,
-                onTapTempo = { viewModel.tapTempo() },
-                primaryColor = primaryColor,
-                surfaceColor = surfaceColor
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             // Mixer Section
             MixerSection(
@@ -250,50 +234,6 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 primaryColor = primaryColor,
                 surfaceColor = surfaceColor
             )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // ✨ AI DJ Co-Pilot Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = primaryColor.copy(alpha = 0.15f)),
-                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.AutoAwesome, contentDescription = null, tint = primaryColor)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("✨ KI DJ Co-Pilot", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
-                        }
-                        Button(
-                            onClick = { viewModel.fetchAiCopilotAdvice() },
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor, contentColor = Color.Black),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.testTag("ai_copilot_button")
-                        ) {
-                            if (isLoadingAiAdvice) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.Black, strokeWidth = 2.dp)
-                            } else {
-                                Text("Tipp Anfragen", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                    if (!aiCopilotAdvice.isNullOrBlank()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = aiCopilotAdvice ?: "",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White.copy(alpha = 0.9f)
-                        )
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -1004,25 +944,17 @@ fun MixerSection(
                 MixerFader("MASTER", masterLevel, onMasterChange, Color.Red, Modifier.weight(1f))
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             
-            // Crossfader
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("CH 1", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                    Text("CROSSFADER", style = MaterialTheme.typography.labelSmall, color = Color.White)
-                    Text("CH 2", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                }
-                Slider(
-                    value = crossfader,
-                    onValueChange = onCrossfaderChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Color.White)
-                )
-            }
+            // Crossfader Component
+            CrossfaderComponent(
+                crossfaderValue = crossfader,
+                onCrossfaderChange = onCrossfaderChange,
+                trackAName = "Deck 1 (Channel 1)",
+                trackBName = "Deck 2 (Channel 2)",
+                primaryColor = primaryColor,
+                surfaceColor = surfaceColor
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
             
@@ -1290,78 +1222,3 @@ fun LyricsDialog(
     )
 }
 
-@Composable
-fun LoopMachineSection(
-    activeLoopBeats: Int?,
-    onLoopSelect: (Int) -> Unit,
-    bpm: Int,
-    onTapTempo: () -> Unit,
-    primaryColor: Color,
-    surfaceColor: Color
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = surfaceColor),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Loop, contentDescription = "Loop Machine", tint = primaryColor, modifier = Modifier.size(20.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "LOOP MASCHINE",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                }
-                
-                Button(
-                    onClick = onTapTempo,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E2E3E), contentColor = Color.White),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                    modifier = Modifier.height(32.dp)
-                ) {
-                    Text("TAP: $bpm BPM", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                val loopLengths = listOf(4, 8, 12, 16)
-                for (beats in loopLengths) {
-                    val isActive = activeLoopBeats == beats
-                    Button(
-                        onClick = { onLoopSelect(beats) },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isActive) primaryColor else Color(0xFF2E2E3E),
-                            contentColor = if (isActive) Color.Black else Color.White
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 4.dp)
-                    ) {
-                        Text(
-                            text = "${beats}er",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-        }
-    }
-}

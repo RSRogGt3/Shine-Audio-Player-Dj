@@ -1,6 +1,6 @@
 {
   "name": "Music Creator",
-  "description": "Create, mix and generate AI music",
+  "description": "DJ decks, mixer, and local music library player",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
