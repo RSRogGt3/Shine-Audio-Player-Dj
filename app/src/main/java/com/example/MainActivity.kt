@@ -27,9 +27,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.DeckScreen
 import com.example.ui.screens.LibraryScreen
+import com.example.ui.screens.VideoLibraryScreen
+import com.example.ui.screens.VideoPlayerScreen
 import com.example.ui.viewmodels.LocalMusicViewModel
 
 class MainActivity : ComponentActivity() {
@@ -88,6 +92,20 @@ fun MainApp() {
                         }
                     }
                 )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Video") },
+                    label = { Text("Video") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "video_library" || it.route == "video_player" } == true,
+                    onClick = {
+                        navController.navigate("video_library") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
         }
     ) { innerPadding ->
@@ -102,6 +120,22 @@ fun MainApp() {
                 ) 
             }
             composable("library") { LibraryScreen(localMusicViewModel) }
+            composable("video_library") { 
+                val context = LocalContext.current
+                VideoLibraryScreen(
+                    viewModel = localMusicViewModel,
+                    onVideoClick = { video ->
+                        localMusicViewModel.playTrack(context, video)
+                        navController.navigate("video_player")
+                    }
+                ) 
+            }
+            composable("video_player") {
+                VideoPlayerScreen(
+                    viewModel = localMusicViewModel,
+                    onBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }

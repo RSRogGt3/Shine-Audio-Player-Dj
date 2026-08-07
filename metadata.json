@@ -1,6 +1,6 @@
 {
   "name": "Music Creator",
-  "description": "DJ decks, mixer, and local music library player",
+  "description": "DJ decks, mixer, and local media library player with video support",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

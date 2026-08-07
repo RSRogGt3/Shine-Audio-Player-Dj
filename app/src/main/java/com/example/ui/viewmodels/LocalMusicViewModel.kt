@@ -1,11 +1,13 @@
 package com.example.ui.viewmodels
 
 import android.content.Context
-import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import android.app.Application
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.data.AppDatabase
 import com.example.data.AppSettings
 import com.example.data.SettingsRepository
@@ -28,21 +30,48 @@ data class LocalTrack(
     val title: String,
     val artist: String,
     val uri: String,
-    val duration: Int = 0 // in ms
+    val duration: Int = 0, // in ms
+    val isVideo: Boolean = false
 )
 
 @OptIn(FlowPreview::class)
 class LocalMusicViewModel(application: Application) : AndroidViewModel(application) {
     private val repository: SettingsRepository
+    private var exoPlayer: ExoPlayer? = null
+
+    private fun getPlayer(context: Context): ExoPlayer {
+        if (exoPlayer == null) {
+            exoPlayer = ExoPlayer.Builder(context).build().apply {
+                repeatMode = if (_isLoop.value) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _isPlaying.value = isPlaying
+                    }
+                    override fun onPlaybackStateChanged(state: Int) {
+                        if (state == Player.STATE_ENDED) {
+                            playNext(context)
+                        }
+                    }
+                })
+            }
+        }
+        return exoPlayer!!
+    }
 
     private val _localTracks = MutableStateFlow<List<LocalTrack>>(emptyList())
     val localTracks: StateFlow<List<LocalTrack>> = _localTracks.asStateFlow()
+
+    private val _localVideos = MutableStateFlow<List<LocalTrack>>(emptyList())
+    val localVideos: StateFlow<List<LocalTrack>> = _localVideos.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _currentTrack = MutableStateFlow<LocalTrack?>(null)
     val currentTrack: StateFlow<LocalTrack?> = _currentTrack.asStateFlow()
+
+    private val _currentVideo = MutableStateFlow<LocalTrack?>(null)
+    val currentVideo: StateFlow<LocalTrack?> = _currentVideo.asStateFlow()
 
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
@@ -107,7 +136,6 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
-    private var mediaPlayer: MediaPlayer? = null
     private var equalizer: android.media.audiofx.Equalizer? = null
     private var visualizer: android.media.audiofx.Visualizer? = null
     private var progressJob: Job? = null
@@ -295,28 +323,13 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     }
     
     private fun updateMediaPlayerVolume() {
-        // CH1 is the primary track fader. Master is the global multiplier.
-        // Crossfader affects CH1 and CH2. 
-        // For CH1: if crossfader < 0.5, it's 1.0. If > 0.5, it fades out.
         val crossfaderFactor = if (_crossfader.value <= 0.5f) 1.0f else (1.0f - _crossfader.value) * 2f
         val finalVolume = _volume.value * _masterLevel.value * _ch1Level.value * crossfaderFactor.coerceIn(0f, 1f)
-        mediaPlayer?.setVolume(finalVolume, finalVolume)
+        exoPlayer?.setVolume(finalVolume)
     }
 
     private fun updateMediaPlayerPitch() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-            try {
-                mediaPlayer?.let { player ->
-                    if (player.isPlaying || _isPlaying.value) {
-                        val params = player.playbackParams
-                        params.speed = _pitch.value
-                        player.playbackParams = params
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+        exoPlayer?.setPlaybackParameters(androidx.media3.common.PlaybackParameters(_pitch.value))
     }
 
     fun toggleShuffle(context: Context? = null) {
@@ -347,7 +360,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             loopEndPositionMs = 0
         } else {
             // Turn on loop
-            val currentPos = mediaPlayer?.currentPosition ?: 0
+            val currentPos = (exoPlayer?.currentPosition ?: 0L).toInt()
             val currentBpm = _bpm.value
             val msPerBeat = 60000 / currentBpm
             val loopDurationMs = beats * msPerBeat
@@ -517,19 +530,22 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         if (_isSampleLibraryLoaded.value) return // Don't override sample library if user chose it
         _isLoading.value = true
         viewModelScope.launch {
-            val tracks = withContext(Dispatchers.IO) {
-                val list = mutableListOf<LocalTrack>()
-                val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                val projection = arrayOf(
+            val audioList = mutableListOf<LocalTrack>()
+            val videoList = mutableListOf<LocalTrack>()
+            
+            withContext(Dispatchers.IO) {
+                // Fetch Audio
+                val audioUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                val audioProjection = arrayOf(
                     MediaStore.Audio.Media._ID,
                     MediaStore.Audio.Media.TITLE,
                     MediaStore.Audio.Media.ARTIST,
                     MediaStore.Audio.Media.DURATION
                 )
-                val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+                val audioSelection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
                 
                 try {
-                    context.contentResolver.query(uri, projection, selection, null, "${MediaStore.Audio.Media.TITLE} ASC")?.use { cursor ->
+                    context.contentResolver.query(audioUri, audioProjection, audioSelection, null, "${MediaStore.Audio.Media.TITLE} ASC")?.use { cursor ->
                         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                         val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                         val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
@@ -542,15 +558,45 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                             val duration = if (durationColumn != -1) cursor.getInt(durationColumn) else 0
                             val contentUri = "${MediaStore.Audio.Media.EXTERNAL_CONTENT_URI}/$id"
 
-                            list.add(LocalTrack(id, title, artist, contentUri, duration))
+                            audioList.add(LocalTrack(id, title, artist, contentUri, duration, isVideo = false))
                         }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
-                list
+
+                // Fetch Video
+                val videoUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                val videoProjection = arrayOf(
+                    MediaStore.Video.Media._ID,
+                    MediaStore.Video.Media.TITLE,
+                    MediaStore.Video.Media.ARTIST,
+                    MediaStore.Video.Media.DURATION
+                )
+                
+                try {
+                    context.contentResolver.query(videoUri, videoProjection, null, null, "${MediaStore.Video.Media.TITLE} ASC")?.use { cursor ->
+                        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+                        val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.TITLE)
+                        val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.ARTIST)
+                        val durationColumn = cursor.getColumnIndex(MediaStore.Video.Media.DURATION)
+
+                        while (cursor.moveToNext()) {
+                            val id = cursor.getLong(idColumn)
+                            val title = cursor.getString(titleColumn) ?: "Unknown Video"
+                            val artist = cursor.getString(artistColumn) ?: "Video"
+                            val duration = if (durationColumn != -1) cursor.getInt(durationColumn) else 0
+                            val contentUri = "${MediaStore.Video.Media.EXTERNAL_CONTENT_URI}/$id"
+
+                            videoList.add(LocalTrack(id, title, artist, contentUri, duration, isVideo = true))
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
-            _localTracks.value = tracks
+            _localTracks.value = audioList
+            _localVideos.value = videoList
             _isLoading.value = false
             ensureAiQueue(context)
         }
@@ -616,6 +662,32 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                 duration = 390000
             )
         )
+        _localVideos.value = listOf(
+            LocalTrack(
+                id = -101,
+                title = "Big Buck Bunny",
+                artist = "Blender Foundation",
+                uri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                duration = 596000,
+                isVideo = true
+            ),
+            LocalTrack(
+                id = -102,
+                title = "Elephant's Dream",
+                artist = "Blender Foundation",
+                uri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+                duration = 653000,
+                isVideo = true
+            ),
+            LocalTrack(
+                id = -103,
+                title = "For Bigger Blazes",
+                artist = "Google",
+                uri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                duration = 15000,
+                isVideo = true
+            )
+        )
         regenerateAiQueue(context)
     }
 
@@ -626,51 +698,39 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         try {
             _lyrics.value = null
             _currentLyricsLine.value = 0
-            visualizer?.release()
-            visualizer = null
-            equalizer?.release()
-            equalizer = null
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
+            
+            val player = getPlayer(context)
+            player.stop()
+            player.clearMediaItems()
             
             _currentTrack.value = track
-            removeTrackFromAiQueue(track.id, context)
-            fetchLyrics() // Automatically fetch lyrics for the new track
-            
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(context, Uri.parse(track.uri))
-                
-                setOnPreparedListener { mp ->
-                    mp.start()
-                    _isPlaying.value = true
-                    _playbackDuration.value = mp.duration
-                    setupEqualizer(mp.audioSessionId)
-                    setupVisualizer(context, mp.audioSessionId)
-                    updateMediaPlayerVolume()
-                    updateMediaPlayerPitch()
-                    startProgressTracker()
-                }
-                setOnCompletionListener {
-                    if (_isLoop.value) {
-                        it.seekTo(0)
-                        it.start()
-                    } else if (_isAutoDjEnabled.value) {
-                        _isPlaying.value = false
-                        _playbackPosition.value = 0
-                        stopProgressTracker()
-                        pickNextTrackWithAi(context)
-                    } else {
-                        _isPlaying.value = false
-                        _playbackPosition.value = 0
-                        stopProgressTracker()
-                        playNext(context)
-                    }
-                }
-                prepareAsync()
+            if (track.isVideo) {
+                _currentVideo.value = track
+            } else {
+                _currentVideo.value = null
             }
+            
+            removeTrackFromAiQueue(track.id, context)
+            fetchLyrics() 
+            
+            val mediaItem = MediaItem.fromUri(track.uri)
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+            
+            // Setup audio effects using ExoPlayer's audio session ID
+            val sessionId = player.audioSessionId
+            if (sessionId != 0) {
+                setupEqualizer(sessionId)
+                setupVisualizer(context, sessionId)
+            }
+            
+            _isPlaying.value = true
+            _playbackDuration.value = track.duration
             _playbackPosition.value = 0
-            _isPlaying.value = false // Will be set to true once prepared
+            updateMediaPlayerVolume()
+            updateMediaPlayerPitch()
+            startProgressTracker()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -849,24 +909,18 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun togglePlayPause() {
-        mediaPlayer?.let { player ->
+        exoPlayer?.let { player ->
             if (player.isPlaying) {
                 player.pause()
-                _isPlaying.value = false
-                stopProgressTracker()
             } else {
-                player.start()
-                _isPlaying.value = true
-                startProgressTracker()
+                player.play()
             }
         }
     }
 
     fun seekTo(positionMs: Int) {
-        mediaPlayer?.let { player ->
-            player.seekTo(positionMs)
-            _playbackPosition.value = positionMs
-        }
+        exoPlayer?.seekTo(positionMs.toLong())
+        _playbackPosition.value = positionMs
     }
 
     fun playNext(context: Context) {
@@ -923,12 +977,12 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
             while (true) {
-                mediaPlayer?.let { player ->
+                exoPlayer?.let { player ->
                     if (player.isPlaying) {
-                        val pos = player.currentPosition
+                        val pos = player.currentPosition.toInt()
                         val activeLoop = _activeLoopBeats.value
                         if (activeLoop != null && loopEndPositionMs > 0 && pos >= loopEndPositionMs) {
-                            player.seekTo(loopStartPositionMs)
+                            player.seekTo(loopStartPositionMs.toLong())
                             _playbackPosition.value = loopStartPositionMs
                         } else {
                             _playbackPosition.value = pos
@@ -981,16 +1035,16 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         progressJob = null
     }
 
+    fun fetchExoPlayer(context: Context): ExoPlayer {
+        return getPlayer(context)
+    }
+
     override fun onCleared() {
-        visualizer?.release()
-        visualizer = null
-        equalizer?.release()
-        equalizer = null
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        stopProgressTracker()
         super.onCleared()
+        visualizer?.release()
+        exoPlayer?.release()
+        exoPlayer = null
+        stopProgressTracker()
     }
 }
 
