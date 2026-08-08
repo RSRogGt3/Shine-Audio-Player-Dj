@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -22,7 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -32,15 +34,19 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.LocalTrack
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.shouldShowRationale
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -204,31 +210,56 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
+                            val isPermanentlyDenied = permissionState.permissions.any { it.status is PermissionStatus.Denied && !it.status.shouldShowRationale }
+                            val shouldShowRationale = permissionState.permissions.any { it.status.shouldShowRationale }
+
                             Icon(
-                                imageVector = Icons.Filled.Folder,
+                                imageVector = if (isPermanentlyDenied) Icons.Filled.Lock else Icons.Filled.Folder,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = if (isPermanentlyDenied) Color.Gray else MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(64.dp)
                             )
                             Text(
-                                text = "Berechtigung erforderlich",
+                                text = if (isPermanentlyDenied) "Berechtigung dauerhaft verweigert" else "Berechtigung erforderlich",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                             Text(
-                                text = "Um Musik von deinem Handy abzuspielen, benötigt der Player Zugriff auf deine Audiodateien.",
+                                text = if (shouldShowRationale) {
+                                    "Um Musik von deinem Handy abzuspielen, benötigt der Player Zugriff auf deine Audiodateien."
+                                } else if (isPermanentlyDenied) {
+                                    "Der Zugriff wurde dauerhaft verweigert. Bitte aktiviere ihn in den Einstellungen deines Handys."
+                                } else {
+                                    "Um Musik von deinem Handy abzuspielen, benötigt der Player Zugriff auf deine Audiodateien."
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color.LightGray,
+                                textAlign = TextAlign.Center,
                                 modifier = Modifier.padding(horizontal = 8.dp)
                             )
                             
-                            Button(
-                                onClick = { permissionState.launchMultiplePermissionRequest() },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("grant_permission_button")
-                            ) {
-                                Text("Zugriff erlauben", color = Color.Black, fontWeight = FontWeight.Bold)
+                            if (isPermanentlyDenied) {
+                                Button(
+                                    onClick = {
+                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                                ) {
+                                    Text("Einstellungen öffnen", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
+                            } else {
+                                Button(
+                                    onClick = { permissionState.launchMultiplePermissionRequest() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("grant_permission_button")
+                                ) {
+                                    Text("Zugriff erlauben", color = Color.Black, fontWeight = FontWeight.Bold)
+                                }
                             }
 
                             TextButton(

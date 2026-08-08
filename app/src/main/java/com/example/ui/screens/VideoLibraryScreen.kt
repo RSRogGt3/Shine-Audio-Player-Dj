@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -26,7 +30,9 @@ import coil.compose.AsyncImage
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.LocalTrack
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.shouldShowRationale
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -103,8 +109,48 @@ fun VideoLibraryScreen(
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Button(onClick = { permissionState.launchMultiplePermissionRequest() }) {
-                        Text("Berechtigung für Videos erteilen")
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val isPermanentlyDenied = permissionState.permissions.any { it.status is PermissionStatus.Denied && !it.status.shouldShowRationale }
+                        val shouldShowRationale = permissionState.permissions.any { it.status.shouldShowRationale }
+
+                        Icon(
+                            imageVector = Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = if (shouldShowRationale) {
+                                "Der Zugriff auf Videos wird benötigt, um deine lokalen Dateien anzuzeigen."
+                            } else if (isPermanentlyDenied) {
+                                "Der Zugriff wurde dauerhaft verweigert. Bitte aktiviere ihn in den Einstellungen."
+                            } else {
+                                "Berechtigung für Videos wird benötigt."
+                            },
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        if (isPermanentlyDenied) {
+                            Button(onClick = {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(intent)
+                            }) {
+                                Text("Einstellungen öffnen")
+                            }
+                        } else {
+                            Button(onClick = { permissionState.launchMultiplePermissionRequest() }) {
+                                Text("Berechtigung erteilen")
+                            }
+                        }
                     }
                 }
             } else if (isLoading) {
