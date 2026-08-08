@@ -52,6 +52,7 @@ fun VideoLibraryScreen(
     
     val localVideos by viewModel.localVideos.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isShuffle by viewModel.isShuffle.collectAsState()
     
     LaunchedEffect(permissionState.allPermissionsGranted) {
         if (permissionState.allPermissionsGranted) {
@@ -94,12 +95,34 @@ fun VideoLibraryScreen(
                     )
                 }
                 
-                Icon(
-                    imageVector = Icons.Filled.VideoLibrary,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp)
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (localVideos.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                if (!isShuffle) {
+                                    viewModel.toggleShuffle(context)
+                                }
+                                val randomVideo = localVideos.random()
+                                onVideoClick(randomVideo)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shuffle,
+                                contentDescription = "Zufallswiedergabe",
+                                tint = if (isShuffle) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Filled.VideoLibrary,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
 
             if (!permissionState.allPermissionsGranted) {

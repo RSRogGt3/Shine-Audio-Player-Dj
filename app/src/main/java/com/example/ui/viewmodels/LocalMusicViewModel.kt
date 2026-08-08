@@ -217,7 +217,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         val database = AppDatabase.getDatabase(application)
         repository = SettingsRepository(database.settingsDao())
         
-        // Load initial settings
+        // Load initial settings from Room DB
         viewModelScope.launch {
             repository.settings.collect { settings ->
                 settings?.let {
@@ -230,6 +230,10 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                     _isAutoDjEnabled.value = it.isAutoDjEnabled
                     _crossfader.value = it.crossfader
                     _pitch.value = it.pitch
+                    _bpm.value = it.bpm
+                    _isBassKilled.value = it.isBassKilled
+                    _isMidKilled.value = it.isMidKilled
+                    _isHighKilled.value = it.isHighKilled
                     selectSkin(it.currentSkinId)
                     
                     if (it.eqLevels.isNotEmpty()) {
@@ -256,31 +260,92 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
-        // Auto-save settings
+        // Auto-save settings debounced
         viewModelScope.launch {
             kotlinx.coroutines.flow.combine(
-                volume, ch1Level, ch2Level, masterLevel, isShuffle, isLoop, isAutoDjEnabled, currentSkin, equalizerBands, crossfader, pitch
-            ) { values ->
-                @Suppress("UNCHECKED_CAST")
-                val bands = values[8] as List<EqualizerBand>
+                listOf(volume, ch1Level, ch2Level, masterLevel, isShuffle, isLoop, isAutoDjEnabled, currentSkin, equalizerBands, crossfader, pitch, bpm)
+            ) { _ ->
                 AppSettings(
-                    volume = values[0] as Float,
-                    ch1Level = values[1] as Float,
-                    ch2Level = values[2] as Float,
-                    masterLevel = values[3] as Float,
-                    isShuffle = values[4] as Boolean,
-                    isLoop = values[5] as Boolean,
-                    isAutoDjEnabled = values[6] as Boolean,
-                    currentSkinId = (values[7] as DjSkin).id,
-                    eqLevels = bands.joinToString(",") { it.currentLevel.toString() },
-                    crossfader = values[9] as Float,
-                    pitch = values[10] as Float
+                    volume = volume.value,
+                    ch1Level = ch1Level.value,
+                    ch2Level = ch2Level.value,
+                    masterLevel = masterLevel.value,
+                    isShuffle = isShuffle.value,
+                    isLoop = isLoop.value,
+                    isAutoDjEnabled = isAutoDjEnabled.value,
+                    currentSkinId = currentSkin.value.id,
+                    eqLevels = equalizerBands.value.joinToString(",") { it.currentLevel.toString() },
+                    crossfader = crossfader.value,
+                    pitch = pitch.value,
+                    bpm = bpm.value,
+                    isBassKilled = isBassKilled.value,
+                    isMidKilled = isMidKilled.value,
+                    isHighKilled = isHighKilled.value,
+                    lastUpdated = System.currentTimeMillis()
                 )
             }
             .debounce(1000)
             .distinctUntilChanged()
-            .collect {
-                repository.saveSettings(it)
+            .collect { settings ->
+                repository.saveSettings(settings)
+            }
+        }
+    }
+
+    fun saveCurrentSettings(context: Context? = null) {
+        viewModelScope.launch {
+            val settings = AppSettings(
+                volume = volume.value,
+                ch1Level = ch1Level.value,
+                ch2Level = ch2Level.value,
+                masterLevel = masterLevel.value,
+                isShuffle = isShuffle.value,
+                isLoop = isLoop.value,
+                isAutoDjEnabled = isAutoDjEnabled.value,
+                currentSkinId = currentSkin.value.id,
+                eqLevels = equalizerBands.value.joinToString(",") { it.currentLevel.toString() },
+                crossfader = crossfader.value,
+                pitch = pitch.value,
+                bpm = bpm.value,
+                isBassKilled = isBassKilled.value,
+                isMidKilled = isMidKilled.value,
+                isHighKilled = isHighKilled.value,
+                lastUpdated = System.currentTimeMillis()
+            )
+            repository.saveSettings(settings)
+
+            if (context != null) {
+                try {
+                    val json = org.json.JSONObject().apply {
+                        put("volume", settings.volume)
+                        put("ch1Level", settings.ch1Level)
+                        put("ch2Level", settings.ch2Level)
+                        put("masterLevel", settings.masterLevel)
+                        put("isShuffle", settings.isShuffle)
+                        put("isLoop", settings.isLoop)
+                        put("isAutoDjEnabled", settings.isAutoDjEnabled)
+                        put("currentSkinId", settings.currentSkinId)
+                        put("eqLevels", settings.eqLevels)
+                        put("crossfader", settings.crossfader)
+                        put("pitch", settings.pitch)
+                        put("bpm", settings.bpm)
+                        put("isBassKilled", settings.isBassKilled)
+                        put("isMidKilled", settings.isMidKilled)
+                        put("isHighKilled", settings.isHighKilled)
+                        put("lastUpdated", settings.lastUpdated)
+                    }.toString(2)
+
+                    val backupFile = java.io.File(context.filesDir, "app_settings_backup.json")
+                    backupFile.writeText(json)
+
+                    android.widget.Toast.makeText(
+                        context,
+                        "Einstellungen erfolgreich in Datenbank und Datei gespeichert!",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         }
     }
@@ -924,23 +989,26 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun playNext(context: Context) {
-        val tracks = _localTracks.value
+        val isVideo = _currentVideo.value != null
+        val tracks = if (isVideo) _localVideos.value else _localTracks.value
         if (tracks.isEmpty()) return
 
-        val currentQueue = _aiQueue.value
-        if (currentQueue.isNotEmpty()) {
-            val nextTrack = currentQueue.first()
-            _aiQueue.value = currentQueue.drop(1)
-            playTrack(context, nextTrack)
-            ensureAiQueue(context)
-            return
+        if (!isVideo) {
+            val currentQueue = _aiQueue.value
+            if (currentQueue.isNotEmpty()) {
+                val nextTrack = currentQueue.first()
+                _aiQueue.value = currentQueue.drop(1)
+                playTrack(context, nextTrack)
+                ensureAiQueue(context)
+                return
+            }
         }
 
-        val current = _currentTrack.value
+        val current = if (isVideo) _currentVideo.value else _currentTrack.value
         if (_isShuffle.value) {
             val candidates = tracks.filter { it.id != current?.id }.ifEmpty { tracks }
             playTrack(context, candidates.random())
-            ensureAiQueue(context)
+            if (!isVideo) ensureAiQueue(context)
             return
         }
 
@@ -951,16 +1019,18 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             0
         }
         playTrack(context, tracks[nextIndex])
-        ensureAiQueue(context)
+        if (!isVideo) ensureAiQueue(context)
     }
 
     fun playPrevious(context: Context) {
-        val tracks = _localTracks.value
-        val current = _currentTrack.value
+        val isVideo = _currentVideo.value != null
+        val tracks = if (isVideo) _localVideos.value else _localTracks.value
+        val current = if (isVideo) _currentVideo.value else _currentTrack.value
         if (tracks.isEmpty()) return
 
         if (_isShuffle.value) {
-            playTrack(context, tracks.random())
+            val candidates = tracks.filter { it.id != current?.id }.ifEmpty { tracks }
+            playTrack(context, candidates.random())
             return
         }
 

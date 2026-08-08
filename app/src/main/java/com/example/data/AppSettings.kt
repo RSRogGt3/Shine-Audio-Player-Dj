@@ -16,5 +16,10 @@ data class AppSettings(
     val currentSkinId: String = "retro_gold",
     val eqLevels: String = "", // Comma separated levels like "0,0,0,0,0"
     val crossfader: Float = 0.5f,
-    val pitch: Float = 1.0f
+    val pitch: Float = 1.0f,
+    val bpm: Int = 120,
+    val isBassKilled: Boolean = false,
+    val isMidKilled: Boolean = false,
+    val isHighKilled: Boolean = false,
+    val lastUpdated: Long = System.currentTimeMillis()
 )

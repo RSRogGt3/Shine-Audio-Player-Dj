@@ -141,11 +141,23 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                     color = Color.White,
                     fontWeight = FontWeight.Bold
                 )
-                IconButton(
-                    onClick = { showExportDialog = true },
-                    modifier = Modifier.background(Color(0xFFE040FB), CircleShape)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Filled.Mic, contentDescription = "Export Mix", tint = Color.Black)
+                    IconButton(
+                        onClick = { viewModel.saveCurrentSettings(context) },
+                        modifier = Modifier.background(primaryColor, CircleShape)
+                    ) {
+                        Icon(Icons.Filled.Save, contentDescription = "Einstellungen in DB & Datei speichern", tint = Color.Black)
+                    }
+
+                    IconButton(
+                        onClick = { showExportDialog = true },
+                        modifier = Modifier.background(Color(0xFFE040FB), CircleShape)
+                    ) {
+                        Icon(Icons.Filled.Mic, contentDescription = "Export Mix", tint = Color.Black)
+                    }
                 }
             }
 
