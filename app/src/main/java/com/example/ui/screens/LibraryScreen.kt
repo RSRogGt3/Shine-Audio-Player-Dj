@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.LocalTrack
@@ -385,7 +386,9 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                                     isSelected = isSelected,
                                     isPlaying = isSelected && isPlaying,
                                     audioLevel = if (isSelected) audioLevel else 0f,
-                                    onClick = { viewModel.playTrack(context, track) }
+                                    onClick = { viewModel.playTrack(context, track) },
+                                    onLoadDeckA = { viewModel.playTrackA(context, track) },
+                                    onLoadDeckB = { viewModel.playTrackB(context, track) }
                                 )
                             }
                         }
@@ -436,7 +439,9 @@ fun TrackListItem(
     isSelected: Boolean,
     isPlaying: Boolean,
     audioLevel: Float = 0f,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLoadDeckA: () -> Unit = {},
+    onLoadDeckB: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -480,7 +485,7 @@ fun TrackListItem(
                 )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(
                 modifier = Modifier.weight(1f)
@@ -502,27 +507,42 @@ fun TrackListItem(
                 )
             }
 
-            if (isSelected) {
-                if (isPlaying) {
-                    MiniTrackVisualizer(
-                        audioLevel = audioLevel,
-                        isPlaying = isPlaying,
-                        primaryColor = MaterialTheme.colorScheme.primary
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.VolumeMute,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Quick Load Buttons: DECK A & DECK B
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Surface(
+                    onClick = onLoadDeckA,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF00E5FF).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFF00E5FF))
+                ) {
+                    Text(
+                        text = "DECK A",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00E5FF),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                     )
                 }
-            } else if (track.duration > 0) {
-                Text(
-                    text = formatTime(track.duration),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+
+                Surface(
+                    onClick = onLoadDeckB,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFFF007F).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFFFF007F))
+                ) {
+                    Text(
+                        text = "DECK B",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF007F),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
+                }
             }
         }
     }

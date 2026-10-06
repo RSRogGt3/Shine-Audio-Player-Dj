@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.ui.viewmodels.LocalMusicViewModel
@@ -195,7 +197,9 @@ fun VideoLibraryScreen(
                     items(localVideos) { video ->
                         VideoListItem(
                             video = video,
-                            onClick = { onVideoClick(video) }
+                            onClick = { onVideoClick(video) },
+                            onLoadDeckA = { viewModel.playTrackA(context, video) },
+                            onLoadDeckB = { viewModel.playTrackB(context, video) }
                         )
                     }
                 }
@@ -205,7 +209,12 @@ fun VideoLibraryScreen(
 }
 
 @Composable
-fun VideoListItem(video: LocalTrack, onClick: () -> Unit) {
+fun VideoListItem(
+    video: LocalTrack,
+    onClick: () -> Unit,
+    onLoadDeckA: () -> Unit = {},
+    onLoadDeckB: () -> Unit = {}
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -223,7 +232,7 @@ fun VideoListItem(video: LocalTrack, onClick: () -> Unit) {
             // Video Thumbnail
             Box(
                 modifier = Modifier
-                    .size(width = 120.dp, height = 70.dp)
+                    .size(width = 110.dp, height = 70.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
@@ -242,7 +251,7 @@ fun VideoListItem(video: LocalTrack, onClick: () -> Unit) {
                 )
             }
 
-            Spacer(modifier = Modifier.width(16.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -250,20 +259,60 @@ fun VideoListItem(video: LocalTrack, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = video.artist,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (video.duration > 0) {
                     Text(
                         text = formatDuration(video.duration),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 4.dp)
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Quick Deck A & Deck B Load Buttons
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Surface(
+                    onClick = onLoadDeckA,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF00E5FF).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFF00E5FF))
+                ) {
+                    Text(
+                        text = "DECK A",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF00E5FF),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
+                }
+
+                Surface(
+                    onClick = onLoadDeckB,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFFFF007F).copy(alpha = 0.2f),
+                    border = BorderStroke(1.dp, Color(0xFFFF007F))
+                ) {
+                    Text(
+                        text = "DECK B",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFF007F),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
                     )
                 }
             }

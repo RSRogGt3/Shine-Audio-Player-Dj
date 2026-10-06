@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -39,12 +44,88 @@ import com.example.ui.viewmodels.LocalTrack
 import com.example.ui.viewmodels.DjSkin
 import com.example.ui.viewmodels.DeskType
 import com.example.ui.viewmodels.EqualizerBand
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.accompanist.permissions.shouldShowRationale
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun DeckScreen(viewModel: LocalMusicViewModel) {
+fun DeckScreen(
+    viewModel: LocalMusicViewModel,
+    onNavigateToEqualizer: () -> Unit = {}
+) {
+    val context = LocalContext.current
+
+    // Media & Microphone permissions for audio playback, video selection and live visualizer
+    val mediaAudioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_AUDIO
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    }
+    val permissionsToRequest = remember {
+        val list = mutableListOf(mediaAudioPermission, Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.READ_MEDIA_VIDEO)
+        }
+        list
+    }
+    val permissionState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
+
+    LaunchedEffect(permissionState.allPermissionsGranted) {
+        if (permissionState.allPermissionsGranted) {
+            viewModel.fetchLocalMusic(context)
+        }
+    }
     val currentTrack by viewModel.currentTrack.collectAsState()
     val isPlaying by viewModel.isPlaying.collectAsState()
     val playbackPosition by viewModel.playbackPosition.collectAsState()
+    val playbackDuration by viewModel.playbackDuration.collectAsState()
+
+    // Deck A states
+    val trackA by viewModel.currentTrackA.collectAsState()
+    val isPlayingA by viewModel.isPlayingA.collectAsState()
+    val posA by viewModel.playbackPositionA.collectAsState()
+    val durA by viewModel.playbackDurationA.collectAsState()
+    val pitchA by viewModel.pitchA.collectAsState()
+    val bpmA by viewModel.bpmA.collectAsState()
+    val audioLevelA by viewModel.audioLevelA.collectAsState()
+    val beatLevelA by viewModel.beatLevelA.collectAsState()
+    val isLoopA by viewModel.isLoopA.collectAsState()
+
+    // Deck B states
+    val trackB by viewModel.currentTrackB.collectAsState()
+    val isPlayingB by viewModel.isPlayingB.collectAsState()
+    val posB by viewModel.playbackPositionB.collectAsState()
+    val durB by viewModel.playbackDurationB.collectAsState()
+    val pitchB by viewModel.pitchB.collectAsState()
+    val bpmB by viewModel.bpmB.collectAsState()
+    val audioLevelB by viewModel.audioLevelB.collectAsState()
+    val beatLevelB by viewModel.beatLevelB.collectAsState()
+    val isLoopB by viewModel.isLoopB.collectAsState()
+
+    // Pioneer DJ: Sync, Master, Beatlock, Beatanzeige, Loops, Hot Cues, Video Mode
+    val masterDeck by viewModel.masterDeck.collectAsState()
+    val isSyncA by viewModel.isSyncA.collectAsState()
+    val isSyncB by viewModel.isSyncB.collectAsState()
+    val isBeatLockA by viewModel.isBeatLockA.collectAsState()
+    val isBeatLockB by viewModel.isBeatLockB.collectAsState()
+    val currentBeatA by viewModel.currentBeatA.collectAsState()
+    val currentBeatB by viewModel.currentBeatB.collectAsState()
+    val beatPhaseA by viewModel.beatPhaseA.collectAsState()
+    val beatPhaseB by viewModel.beatPhaseB.collectAsState()
+    val beatPhaseDiff by viewModel.beatPhaseDiff.collectAsState()
+    val isLoopActiveA by viewModel.isLoopActiveA.collectAsState()
+    val isLoopActiveB by viewModel.isLoopActiveB.collectAsState()
+    val activeLoopBeatsA by viewModel.activeLoopBeatsA.collectAsState()
+    val activeLoopBeatsB by viewModel.activeLoopBeatsB.collectAsState()
+    val hotCuesA by viewModel.hotCuesA.collectAsState()
+    val hotCuesB by viewModel.hotCuesB.collectAsState()
+    val deckVideoModeA by viewModel.deckVideoModeA.collectAsState()
+    val deckVideoModeB by viewModel.deckVideoModeB.collectAsState()
+
+    val deckViewMode by viewModel.deckViewMode.collectAsState()
+
     val isShuffle by viewModel.isShuffle.collectAsState()
     val isLoop by viewModel.isLoop.collectAsState()
     val isAutoDjEnabled by viewModel.isAutoDjEnabled.collectAsState()
@@ -54,23 +135,24 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
     val masterLevel by viewModel.masterLevel.collectAsState()
     val crossfader by viewModel.crossfader.collectAsState()
     val pitch by viewModel.pitch.collectAsState()
-    val equalizerBands by viewModel.equalizerBands.collectAsState()
     val isBassKilled by viewModel.isBassKilled.collectAsState()
     val isMidKilled by viewModel.isMidKilled.collectAsState()
     val isHighKilled by viewModel.isHighKilled.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val beatLevel by viewModel.beatLevel.collectAsState()
-    val playbackDuration by viewModel.playbackDuration.collectAsState()
     val lyrics by viewModel.lyrics.collectAsState()
     val isLoadingLyrics by viewModel.isLoadingLyrics.collectAsState()
     val currentLyricsLine by viewModel.currentLyricsLine.collectAsState()
 
+    val localTracks by viewModel.localTracks.collectAsState()
+    val localVideos by viewModel.localVideos.collectAsState()
+
     val availableSkins by viewModel.availableSkins.collectAsState()
     val currentSkin by viewModel.currentSkin.collectAsState()
     
-    val context = LocalContext.current
     var showExportDialog by remember { mutableStateOf(false) }
     var showLyricsDialog by remember { mutableStateOf(false) }
+    var showTrackPickerForDeck by remember { mutableStateOf<String?>(null) } // "A" or "B"
 
     val backgrounds = remember {
         listOf(
@@ -124,23 +206,31 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 .displayCutoutPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
-                .widthIn(max = 760.dp)
+                .widthIn(max = 840.dp)
                 .align(Alignment.TopCenter)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Top
         ) {
+            // Header Row
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Hauptdeck",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                Column {
+                    Text(
+                        text = "DJ Live-Mischpult",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "2 Decks parallel auflegen • MP3 & MP4 Mix",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = primaryColor
+                    )
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -149,7 +239,7 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                         onClick = { viewModel.saveCurrentSettings(context) },
                         modifier = Modifier.background(primaryColor, CircleShape)
                     ) {
-                        Icon(Icons.Filled.Save, contentDescription = "Einstellungen in DB & Datei speichern", tint = Color.Black)
+                        Icon(Icons.Filled.Save, contentDescription = "Einstellungen speichern", tint = Color.Black)
                     }
 
                     IconButton(
@@ -168,106 +258,390 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 onSkinSelected = { viewModel.selectSkin(it) }
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Permissions Check & Status Banner
+            if (!permissionState.allPermissionsGranted) {
+                Spacer(modifier = Modifier.height(12.dp))
+                val isPermanentlyDenied = permissionState.permissions.any { it.status is PermissionStatus.Denied && !it.status.shouldShowRationale }
+                
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("deck_permission_banner"),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFF21151A),
+                    border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.7f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Lock,
+                                contentDescription = null,
+                                tint = Color(0xFFFF5252),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Berechtigungen erforderlich",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = if (isPermanentlyDenied) 
+                                        "Dateizugriff in Einstellungen aktivieren für eigene MP3s & MP4s" 
+                                    else 
+                                        "Zugriff auf Audio/Video & Mikrofon (Visualizer) erlauben",
+                                    fontSize = 10.sp,
+                                    color = Color.LightGray,
+                                    maxLines = 2
+                                )
+                            }
+                        }
 
-            // Visual Deck Display
-            DeckDisplay(
-                currentSkin = currentSkin,
-                isPlaying = isPlaying,
-                playbackPosition = playbackPosition,
-                audioLevel = audioLevel,
-                beatLevel = beatLevel,
-                ch1Level = ch1Level,
-                ch2Level = ch2Level,
-                crossfader = crossfader,
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        if (isPermanentlyDenied) {
+                            Button(
+                                onClick = {
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text("Einstellungen", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        } else {
+                            Button(
+                                onClick = { permissionState.launchMultiplePermissionRequest() },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier.testTag("deck_grant_permission_btn")
+                            ) {
+                                Text("Erlauben", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Deck View Switcher: [ DUAL DECKS A & B ] [ DECK A ] [ DECK B ]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF161520))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "DUAL" to "DUAL DECKS (A & B)",
+                    "DECK_A" to "DECK A (CH 1)",
+                    "DECK_B" to "DECK B (CH 2)"
+                ).forEach { (mode, label) ->
+                    val isSelected = deckViewMode == mode
+                    Surface(
+                        onClick = { viewModel.setDeckViewMode(mode) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) primaryColor else Color.Transparent,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.Black else Color.LightGray
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // DUAL DECKS VIEW OR FOCUSED SINGLE DECK VIEW
+            if (deckViewMode == "DUAL") {
+                // Two CDJ Decks with Central DJM Mixer Console
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // PIONEER CDJ DECK A (CH 1)
+                    CdjDeckComponent(
+                        deckId = "A",
+                        channelNumber = 1,
+                        track = trackA,
+                        isPlaying = isPlayingA,
+                        playbackPosition = posA,
+                        playbackDuration = durA,
+                        bpm = bpmA,
+                        pitch = pitchA,
+                        isMaster = masterDeck == "A",
+                        isSync = isSyncA,
+                        isBeatLock = isBeatLockA,
+                        currentBeat = currentBeatA,
+                        beatPhase = beatPhaseA,
+                        beatPhaseDiff = beatPhaseDiff,
+                        isLoopActive = isLoopActiveA,
+                        activeLoopBeats = activeLoopBeatsA,
+                        hotCues = hotCuesA,
+                        themeColor = Color(0xFF00E5FF),
+                        surfaceColor = surfaceColor,
+                        currentSkin = currentSkin,
+                        videoMode = deckVideoModeA,
+                        onToggleVideoMode = { viewModel.toggleDeckVideoModeA() },
+                        onLoadTrack = { showTrackPickerForDeck = "A" },
+                        onTogglePlay = { viewModel.togglePlayPauseA() },
+                        onCue = { viewModel.cueDeckA() },
+                        onToggleSync = { viewModel.toggleSyncA() },
+                        onSetMaster = { viewModel.setMasterDeck("A") },
+                        onToggleBeatLock = { viewModel.toggleBeatLockA() },
+                        onPitchChange = { viewModel.setPitchA(it) },
+                        onNudgeMinus = { viewModel.nudgeA(false) },
+                        onNudgePlus = { viewModel.nudgeA(true) },
+                        onSeek = { viewModel.seekToA(it) },
+                        onLoopIn = { viewModel.setLoopInA() },
+                        onLoopOut = { viewModel.setLoopOutA() },
+                        onExitLoop = { viewModel.exitLoopA() },
+                        onAutoLoop = { viewModel.setAutoLoopA(it) },
+                        onHalveLoop = { viewModel.halveLoopA() },
+                        onDoubleLoop = { viewModel.doubleLoopA() },
+                        onTriggerHotCue = { viewModel.triggerHotCueA(it) },
+                        onClearHotCue = { viewModel.clearHotCueA(it) },
+                        viewModel = viewModel
+                    )
+
+                    // PIONEER CENTRAL DJM MISCHPULT
+                    DjMixerComponent(
+                        viewModel = viewModel,
+                        primaryColor = Color(0xFF00E5FF),
+                        accentColor = Color(0xFFFF007F)
+                    )
+
+                    // PIONEER CDJ DECK B (CH 2)
+                    CdjDeckComponent(
+                        deckId = "B",
+                        channelNumber = 2,
+                        track = trackB,
+                        isPlaying = isPlayingB,
+                        playbackPosition = posB,
+                        playbackDuration = durB,
+                        bpm = bpmB,
+                        pitch = pitchB,
+                        isMaster = masterDeck == "B",
+                        isSync = isSyncB,
+                        isBeatLock = isBeatLockB,
+                        currentBeat = currentBeatB,
+                        beatPhase = beatPhaseB,
+                        beatPhaseDiff = beatPhaseDiff,
+                        isLoopActive = isLoopActiveB,
+                        activeLoopBeats = activeLoopBeatsB,
+                        hotCues = hotCuesB,
+                        themeColor = Color(0xFFFF007F),
+                        surfaceColor = surfaceColor,
+                        currentSkin = currentSkin,
+                        videoMode = deckVideoModeB,
+                        onToggleVideoMode = { viewModel.toggleDeckVideoModeB() },
+                        onLoadTrack = { showTrackPickerForDeck = "B" },
+                        onTogglePlay = { viewModel.togglePlayPauseB() },
+                        onCue = { viewModel.cueDeckB() },
+                        onToggleSync = { viewModel.toggleSyncB() },
+                        onSetMaster = { viewModel.setMasterDeck("B") },
+                        onToggleBeatLock = { viewModel.toggleBeatLockB() },
+                        onPitchChange = { viewModel.setPitchB(it) },
+                        onNudgeMinus = { viewModel.nudgeB(false) },
+                        onNudgePlus = { viewModel.nudgeB(true) },
+                        onSeek = { viewModel.seekToB(it) },
+                        onLoopIn = { viewModel.setLoopInB() },
+                        onLoopOut = { viewModel.setLoopOutB() },
+                        onExitLoop = { viewModel.exitLoopB() },
+                        onAutoLoop = { viewModel.setAutoLoopB(it) },
+                        onHalveLoop = { viewModel.halveLoopB() },
+                        onDoubleLoop = { viewModel.doubleLoopB() },
+                        onTriggerHotCue = { viewModel.triggerHotCueB(it) },
+                        onClearHotCue = { viewModel.clearHotCueB(it) },
+                        viewModel = viewModel
+                    )
+                }
+            } else if (deckViewMode == "DECK_A") {
+                // Focused Single Deck A + Mixer
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CdjDeckComponent(
+                        deckId = "A",
+                        channelNumber = 1,
+                        track = trackA,
+                        isPlaying = isPlayingA,
+                        playbackPosition = posA,
+                        playbackDuration = durA,
+                        bpm = bpmA,
+                        pitch = pitchA,
+                        isMaster = masterDeck == "A",
+                        isSync = isSyncA,
+                        isBeatLock = isBeatLockA,
+                        currentBeat = currentBeatA,
+                        beatPhase = beatPhaseA,
+                        beatPhaseDiff = beatPhaseDiff,
+                        isLoopActive = isLoopActiveA,
+                        activeLoopBeats = activeLoopBeatsA,
+                        hotCues = hotCuesA,
+                        themeColor = Color(0xFF00E5FF),
+                        surfaceColor = surfaceColor,
+                        currentSkin = currentSkin,
+                        videoMode = deckVideoModeA,
+                        onToggleVideoMode = { viewModel.toggleDeckVideoModeA() },
+                        onLoadTrack = { showTrackPickerForDeck = "A" },
+                        onTogglePlay = { viewModel.togglePlayPauseA() },
+                        onCue = { viewModel.cueDeckA() },
+                        onToggleSync = { viewModel.toggleSyncA() },
+                        onSetMaster = { viewModel.setMasterDeck("A") },
+                        onToggleBeatLock = { viewModel.toggleBeatLockA() },
+                        onPitchChange = { viewModel.setPitchA(it) },
+                        onNudgeMinus = { viewModel.nudgeA(false) },
+                        onNudgePlus = { viewModel.nudgeA(true) },
+                        onSeek = { viewModel.seekToA(it) },
+                        onLoopIn = { viewModel.setLoopInA() },
+                        onLoopOut = { viewModel.setLoopOutA() },
+                        onExitLoop = { viewModel.exitLoopA() },
+                        onAutoLoop = { viewModel.setAutoLoopA(it) },
+                        onHalveLoop = { viewModel.halveLoopA() },
+                        onDoubleLoop = { viewModel.doubleLoopA() },
+                        onTriggerHotCue = { viewModel.triggerHotCueA(it) },
+                        onClearHotCue = { viewModel.clearHotCueA(it) },
+                        viewModel = viewModel
+                    )
+
+                    DjMixerComponent(
+                        viewModel = viewModel,
+                        primaryColor = Color(0xFF00E5FF),
+                        accentColor = Color(0xFFFF007F)
+                    )
+                }
+            } else {
+                // Focused Single Deck B + Mixer
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CdjDeckComponent(
+                        deckId = "B",
+                        channelNumber = 2,
+                        track = trackB,
+                        isPlaying = isPlayingB,
+                        playbackPosition = posB,
+                        playbackDuration = durB,
+                        bpm = bpmB,
+                        pitch = pitchB,
+                        isMaster = masterDeck == "B",
+                        isSync = isSyncB,
+                        isBeatLock = isBeatLockB,
+                        currentBeat = currentBeatB,
+                        beatPhase = beatPhaseB,
+                        beatPhaseDiff = beatPhaseDiff,
+                        isLoopActive = isLoopActiveB,
+                        activeLoopBeats = activeLoopBeatsB,
+                        hotCues = hotCuesB,
+                        themeColor = Color(0xFFFF007F),
+                        surfaceColor = surfaceColor,
+                        currentSkin = currentSkin,
+                        videoMode = deckVideoModeB,
+                        onToggleVideoMode = { viewModel.toggleDeckVideoModeB() },
+                        onLoadTrack = { showTrackPickerForDeck = "B" },
+                        onTogglePlay = { viewModel.togglePlayPauseB() },
+                        onCue = { viewModel.cueDeckB() },
+                        onToggleSync = { viewModel.toggleSyncB() },
+                        onSetMaster = { viewModel.setMasterDeck("B") },
+                        onToggleBeatLock = { viewModel.toggleBeatLockB() },
+                        onPitchChange = { viewModel.setPitchB(it) },
+                        onNudgeMinus = { viewModel.nudgeB(false) },
+                        onNudgePlus = { viewModel.nudgeB(true) },
+                        onSeek = { viewModel.seekToB(it) },
+                        onLoopIn = { viewModel.setLoopInB() },
+                        onLoopOut = { viewModel.setLoopOutB() },
+                        onExitLoop = { viewModel.exitLoopB() },
+                        onAutoLoop = { viewModel.setAutoLoopB(it) },
+                        onHalveLoop = { viewModel.halveLoopB() },
+                        onDoubleLoop = { viewModel.doubleLoopB() },
+                        onTriggerHotCue = { viewModel.triggerHotCueB(it) },
+                        onClearHotCue = { viewModel.clearHotCueB(it) },
+                        viewModel = viewModel
+                    )
+
+                    DjMixerComponent(
+                        viewModel = viewModel,
+                        primaryColor = Color(0xFF00E5FF),
+                        accentColor = Color(0xFFFF007F)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Real-Time Audio Visualizer (Canvas API with frequencies up to 192 kHz)
+            AudioVisualizerComponent(
+                viewModel = viewModel,
+                primaryColor = primaryColor,
+                surfaceColor = surfaceColor
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // AI Bass Booster Component (with 192 kHz frequency engine and presets)
+            AiBassBoosterComponent(
+                viewModel = viewModel,
+                primaryColor = primaryColor,
+                surfaceColor = surfaceColor
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Link to Dedicated Equalizer Tab
+            Button(
+                onClick = onNavigateToEqualizer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("open_pro_equalizer_tab_btn"),
+                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Filled.Equalizer, contentDescription = null, tint = Color.Black)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Studio Equalizer Tab öffnen (5 - 12 Lanes) →", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Visual Equalizer Component embedded on Deck Screen
+            VisualEqualizerComponent(
+                viewModel = viewModel,
                 primaryColor = primaryColor,
                 accentColor = accentColor,
                 surfaceColor = surfaceColor
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Track Info
-            TrackInfo(currentTrack = currentTrack)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Current Lyric Preview
-            CurrentLyricPreview(lyrics = lyrics, currentLine = currentLyricsLine)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Seek Bar and Time
-            SeekBarAndTimer(
-                playbackPosition = playbackPosition,
-                playbackDuration = playbackDuration,
-                onSeek = { viewModel.seekTo(it) },
-                primaryColor = primaryColor
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Playback Controls
-            PlaybackControls(
-                isPlaying = isPlaying,
-                isShuffle = isShuffle,
-                isLoop = isLoop,
-                isAutoDjEnabled = isAutoDjEnabled,
-                onTogglePlay = { viewModel.togglePlayPause() },
-                onSkipNext = { viewModel.playNext(context) },
-                onSkipPrev = { viewModel.playPrevious(context) },
-                onToggleShuffle = { viewModel.toggleShuffle() },
-                onToggleLoop = { viewModel.toggleLoop() },
-                onToggleAutoDj = { viewModel.toggleAutoDj() },
-                onShowLyrics = { 
-                    viewModel.fetchLyrics()
-                    showLyricsDialog = true
-                },
-                primaryColor = primaryColor,
-                surfaceColor = surfaceColor
-            )
-
-
-
-            // Mixer Section
-            MixerSection(
-                ch1Level = ch1Level,
-                ch2Level = ch2Level,
-                masterLevel = masterLevel,
-                volume = volume,
-                crossfader = crossfader,
-                pitch = pitch,
-                onCh1Change = { viewModel.setCh1Level(it) },
-                onCh2Change = { viewModel.setCh2Level(it) },
-                onMasterChange = { viewModel.setMasterLevel(it) },
-                onVolumeChange = { viewModel.setVolume(it) },
-                onCrossfaderChange = { viewModel.setCrossfader(it) },
-                onPitchChange = { viewModel.setPitch(it) },
-                primaryColor = primaryColor,
-                surfaceColor = surfaceColor
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Equalizer Section
-            if (equalizerBands.isNotEmpty()) {
-                EqualizerSection(
-                    bands = equalizerBands,
-                    isPlaying = isPlaying,
-                    playbackPosition = playbackPosition,
-                    audioLevel = audioLevel,
-                    isBassKilled = isBassKilled,
-                    isMidKilled = isMidKilled,
-                    isHighKilled = isHighKilled,
-                    onToggleBassKill = { viewModel.toggleBassKill() },
-                    onToggleMidKill = { viewModel.toggleMidKill() },
-                    onToggleHighKill = { viewModel.toggleHighKill() },
-                    onResetKills = { viewModel.resetAllKills() },
-                    primaryColor = primaryColor,
-                    surfaceColor = surfaceColor,
-                    onBandChange = { band, level -> viewModel.setEqualizerBandLevel(band, level.toShort()) }
-                )
-            }
+            Spacer(modifier = Modifier.height(28.dp))
         }
 
         if (showLyricsDialog) {
@@ -290,8 +664,503 @@ fun DeckScreen(viewModel: LocalMusicViewModel) {
                 )
             }
         }
+
+        // Modal Track Picker Dialog for loading MP3 or MP4 onto Deck A or Deck B
+        showTrackPickerForDeck?.let { targetDeck ->
+            TrackPickerDialog(
+                targetDeck = targetDeck,
+                tracks = localTracks,
+                videos = localVideos,
+                onSelectTrack = { selected ->
+                    if (targetDeck == "A") {
+                        viewModel.playTrackA(context, selected)
+                    } else {
+                        viewModel.playTrackB(context, selected)
+                    }
+                    showTrackPickerForDeck = null
+                },
+                onDismiss = { showTrackPickerForDeck = null }
+            )
+        }
     }
 }
+
+@Composable
+fun DeckChannelCard(
+    deckId: String,
+    channelTitle: String,
+    track: LocalTrack?,
+    isPlaying: Boolean,
+    playbackPosition: Int,
+    playbackDuration: Int,
+    pitch: Float,
+    bpm: Int,
+    audioLevel: Float,
+    beatLevel: Float,
+    isLoop: Boolean,
+    themeColor: Color,
+    surfaceColor: Color,
+    currentSkin: DjSkin,
+    largeMode: Boolean = false,
+    onLoadTrack: () -> Unit,
+    onTogglePlay: () -> Unit,
+    onCue: () -> Unit,
+    onSync: () -> Unit,
+    onNudgeMinus: () -> Unit,
+    onNudgePlus: () -> Unit,
+    onPitchChange: (Float) -> Unit,
+    onSeek: (Int) -> Unit,
+    onToggleLoop: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("deck_channel_card_$deckId"),
+        shape = RoundedCornerShape(18.dp),
+        color = surfaceColor.copy(alpha = 0.95f),
+        border = BorderStroke(1.5.dp, themeColor.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Channel Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(if (isPlaying) Color(0xFF00E676) else Color.Gray, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = channelTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = themeColor
+                    )
+                }
+
+                Button(
+                    onClick = onLoadTrack,
+                    colors = ButtonDefaults.buttonColors(containerColor = themeColor),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.testTag("load_track_button_$deckId")
+                ) {
+                    Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("TRACK LADEN (MP3/MP4)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Track info strip
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = Color(0xFF14131E)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (track?.isVideo == true) Color(0xFFE040FB) else themeColor,
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text(
+                                text = if (track?.isVideo == true) "MP4 VIDEO" else "MP3 AUDIO",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = track?.title ?: "Kein Track geladen (Tippe auf Laden)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = track?.artist ?: "Deck $deckId Bereit",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    // BPM Display
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF201F2C)
+                    ) {
+                        Text(
+                            text = "${(bpm * pitch).toInt()} BPM",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = themeColor,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Jogwheel Turntable Display
+            DeckDisplay(
+                currentSkin = currentSkin,
+                isPlaying = isPlaying,
+                playbackPosition = playbackPosition,
+                audioLevel = audioLevel,
+                beatLevel = beatLevel,
+                ch1Level = 0.8f,
+                ch2Level = 0.8f,
+                crossfader = 0.5f,
+                primaryColor = themeColor,
+                accentColor = Color.White,
+                surfaceColor = surfaceColor
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Seek Bar
+            SeekBarAndTimer(
+                playbackPosition = playbackPosition,
+                playbackDuration = playbackDuration,
+                onSeek = onSeek,
+                primaryColor = themeColor
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Deck Playback Controls & Pitch Fader
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Play / Pause
+                Button(
+                    onClick = onTogglePlay,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isPlaying) Color(0xFFFF5252) else themeColor
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1.3f).testTag("play_pause_deck_$deckId")
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = "Play/Pause",
+                        tint = Color.Black
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (isPlaying) "PAUSE" else "PLAY", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                }
+
+                // CUE
+                Button(
+                    onClick = onCue,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2B38)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).testTag("cue_deck_$deckId")
+                ) {
+                    Text("CUE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+
+                // SYNC
+                Button(
+                    onClick = onSync,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C2B38)),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.weight(1f).testTag("sync_deck_$deckId")
+                ) {
+                    Text("SYNC", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = themeColor)
+                }
+
+                // NUDGE -
+                IconButton(
+                    onClick = onNudgeMinus,
+                    modifier = Modifier.background(Color(0xFF201F2C), CircleShape).size(36.dp)
+                ) {
+                    Text("◄", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                // NUDGE +
+                IconButton(
+                    onClick = onNudgePlus,
+                    modifier = Modifier.background(Color(0xFF201F2C), CircleShape).size(36.dp)
+                ) {
+                    Text("►", fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Tempo / Pitch Fader Slider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Pitch: ${"%.1f".format((pitch - 1f) * 100f)}%",
+                    fontSize = 11.sp,
+                    color = Color.LightGray,
+                    modifier = Modifier.width(80.dp)
+                )
+                Slider(
+                    value = pitch,
+                    onValueChange = onPitchChange,
+                    valueRange = 0.85f..1.15f,
+                    colors = SliderDefaults.colors(thumbColor = themeColor, activeTrackColor = themeColor),
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { onPitchChange(1.0f) }) {
+                    Text("0%", fontSize = 11.sp, color = themeColor)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrackPickerDialog(
+    targetDeck: String,
+    tracks: List<LocalTrack>,
+    videos: List<LocalTrack>,
+    onSelectTrack: (LocalTrack) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("AUDIO") } // "AUDIO", "VIDEO", "SAMPLES"
+
+    val sampleTracks = remember {
+        listOf(
+            LocalTrack(
+                id = -1,
+                title = "SoundHelix Synth Symphony 1",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+                duration = 372000
+            ),
+            LocalTrack(
+                id = -2,
+                title = "SoundHelix Deep Bass Groove 2",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+                duration = 423000
+            ),
+            LocalTrack(
+                id = -3,
+                title = "SoundHelix Club Electro 3",
+                artist = "SoundHelix Archive",
+                uri = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+                duration = 345000
+            ),
+            LocalTrack(
+                id = -101,
+                title = "Big Buck Bunny (MP4 Video)",
+                artist = "Blender Foundation",
+                uri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                duration = 596000,
+                isVideo = true
+            ),
+            LocalTrack(
+                id = -102,
+                title = "Elephant's Dream (MP4 Video)",
+                artist = "Blender Foundation",
+                uri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+                duration = 653000,
+                isVideo = true
+            )
+        )
+    }
+
+    val currentList = when (selectedCategory) {
+        "AUDIO" -> tracks.ifEmpty { sampleTracks.filter { !it.isVideo } }
+        "VIDEO" -> videos.ifEmpty { sampleTracks.filter { it.isVideo } }
+        else -> sampleTracks
+    }
+
+    val filteredList = remember(currentList, searchQuery) {
+        if (searchQuery.isBlank()) currentList else currentList.filter {
+            it.title.contains(searchQuery, ignoreCase = true) || it.artist.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF161522)),
+            border = BorderStroke(1.5.dp, Color(0xFF00E5FF).copy(alpha = 0.5f)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Track für DECK $targetDeck wählen",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Schließen", tint = Color.Gray)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Search field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Suche nach Titel oder Artist...", color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF00E5FF),
+                        unfocusedBorderColor = Color.DarkGray
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Category Tabs
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("AUDIO" to "Musik (MP3)", "VIDEO" to "Videos (MP4)", "SAMPLES" to "Samples").forEach { (cat, title) ->
+                        val isSelected = selectedCategory == cat
+                        Surface(
+                            onClick = { selectedCategory = cat },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) Color(0xFF00E5FF) else Color(0xFF222030),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = title,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) Color.Black else Color.LightGray
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Track List
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(filteredList.size) { index ->
+                        val item = filteredList[index]
+                        Surface(
+                            onClick = { onSelectTrack(item) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF1E1D2C),
+                            border = BorderStroke(1.dp, Color(0xFF2E2C42)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (item.isVideo) Icons.Filled.VideoLibrary else Icons.Filled.MusicNote,
+                                        contentDescription = null,
+                                        tint = if (item.isVideo) Color(0xFFE040FB) else Color(0xFF00E5FF),
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .background(Color(0xFF2A283C), CircleShape)
+                                            .padding(8.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = item.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = item.artist,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.Gray,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (targetDeck == "A") Color(0xFF00E5FF) else Color(0xFFFF007F)
+                                ) {
+                                    Text(
+                                        text = "AUF DECK $targetDeck",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Black,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 fun SkinSelector(

@@ -28,12 +28,14 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.ui.platform.LocalContext
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.screens.DeckScreen
 import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.VideoLibraryScreen
 import com.example.ui.screens.VideoPlayerScreen
+import com.example.ui.screens.VisualEqualizerScreen
 import com.example.ui.viewmodels.LocalMusicViewModel
 
 class MainActivity : ComponentActivity() {
@@ -70,6 +72,20 @@ fun MainApp() {
                     selected = currentDestination?.hierarchy?.any { it.route == "deck" } == true,
                     onClick = {
                         navController.navigate("deck") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+                NavigationBarItem(
+                    icon = { Icon(Icons.Filled.Equalizer, contentDescription = "Equalizer") },
+                    label = { Text("Equalizer") },
+                    selected = currentDestination?.hierarchy?.any { it.route == "equalizer" } == true,
+                    onClick = {
+                        navController.navigate("equalizer") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
@@ -116,8 +132,12 @@ fun MainApp() {
         ) {
             composable("deck") { 
                 DeckScreen(
-                    viewModel = localMusicViewModel
+                    viewModel = localMusicViewModel,
+                    onNavigateToEqualizer = { navController.navigate("equalizer") }
                 ) 
+            }
+            composable("equalizer") {
+                VisualEqualizerScreen(viewModel = localMusicViewModel)
             }
             composable("library") { LibraryScreen(localMusicViewModel) }
             composable("video_library") { 
