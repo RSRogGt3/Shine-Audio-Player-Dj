@@ -277,7 +277,7 @@ fun ChannelStrip(
                 displayValue = String.format("%.1fx", trim)
             )
 
-            Divider(color = Color(0xFF222131), modifier = Modifier.padding(vertical = 6.dp))
+            HorizontalDivider(color = Color(0xFF222131), modifier = Modifier.padding(vertical = 6.dp))
 
             // 3-BAND EQ: HI, MID, LOW
             RotaryKnobRow(
@@ -324,7 +324,7 @@ fun ChannelStrip(
                 }
             }
 
-            Divider(color = Color(0xFF222131), modifier = Modifier.padding(vertical = 6.dp))
+            HorizontalDivider(color = Color(0xFF222131), modifier = Modifier.padding(vertical = 6.dp))
 
             // COLOR FX FILTER KNOB (LPF / HPF)
             Column(

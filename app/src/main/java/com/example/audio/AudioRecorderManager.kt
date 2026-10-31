@@ -89,6 +89,7 @@ class AudioRecorderManager(private val context: Context) {
         mediaRecorder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             MediaRecorder(context)
         } else {
+            @Suppress("DEPRECATION")
             MediaRecorder()
         }
 

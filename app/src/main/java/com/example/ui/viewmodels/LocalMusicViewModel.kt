@@ -24,6 +24,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.notification.MediaNotificationManager
+import com.example.widget.DjQuickPlayerWidgetProvider
+import com.example.widget.DjDualDeckWidgetProvider
+import com.example.ui.models.StreamingProvider
+import com.example.ui.models.StreamingTrack
+import com.example.ui.models.DefaultStreamingCatalog
+import com.example.ui.models.PlayerNotification
+import com.example.ui.models.PlayerNotificationType
 
 data class LocalTrack(
     val id: Long,
@@ -36,6 +44,45 @@ data class LocalTrack(
 
 @OptIn(FlowPreview::class)
 class LocalMusicViewModel(application: Application) : AndroidViewModel(application) {
+    companion object {
+        @Volatile
+        var activeInstance: LocalMusicViewModel? = null
+
+        fun togglePlayPauseGlobal(context: Context) {
+            activeInstance?.togglePlayPauseBoth()
+        }
+
+        fun playNextGlobal(context: Context) {
+            activeInstance?.playNext(context)
+        }
+
+        fun playPreviousGlobal(context: Context) {
+            activeInstance?.playPrevious(context)
+        }
+
+        fun syncGlobal(context: Context) {
+            activeInstance?.let { vm ->
+                if (vm.masterDeck.value == "A") {
+                    vm.toggleSyncB()
+                } else {
+                    vm.toggleSyncA()
+                }
+            }
+        }
+
+        fun togglePlayPauseAGlobal(context: Context) {
+            activeInstance?.togglePlayPauseA()
+        }
+
+        fun togglePlayPauseBGlobal(context: Context) {
+            activeInstance?.togglePlayPauseB()
+        }
+
+        fun cueDeckAGlobal(context: Context) {
+            activeInstance?.cueDeckA()
+        }
+    }
+
     private val repository: SettingsRepository
     private var exoPlayerA: ExoPlayer? = null
     private var exoPlayerB: ExoPlayer? = null
@@ -48,6 +95,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                     override fun onIsPlayingChanged(playing: Boolean) {
                         _isPlayingA.value = playing
                         _isPlaying.value = playing || (_isPlayingB.value)
+                        notifyNotificationAndWidgets(context)
                     }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_ENDED) {
@@ -68,6 +116,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                     override fun onIsPlayingChanged(playing: Boolean) {
                         _isPlayingB.value = playing
                         _isPlaying.value = playing || (_isPlayingA.value)
+                        notifyNotificationAndWidgets(context)
                     }
                     override fun onPlaybackStateChanged(state: Int) {
                         if (state == Player.STATE_ENDED) {
@@ -328,6 +377,126 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     private val _isSampleLibraryLoaded = MutableStateFlow(false)
     val isSampleLibraryLoaded: StateFlow<Boolean> = _isSampleLibraryLoaded.asStateFlow()
 
+    // Spotify, YouTube Music & Amazon Music Streaming Hub
+    private val _streamingTracks = MutableStateFlow<List<StreamingTrack>>(DefaultStreamingCatalog.tracks)
+    val streamingTracks: StateFlow<List<StreamingTrack>> = _streamingTracks.asStateFlow()
+
+    private val _selectedStreamingProvider = MutableStateFlow<StreamingProvider?>(null)
+    val selectedStreamingProvider: StateFlow<StreamingProvider?> = _selectedStreamingProvider.asStateFlow()
+
+    private val _streamingSearchQuery = MutableStateFlow("")
+    val streamingSearchQuery: StateFlow<String> = _streamingSearchQuery.asStateFlow()
+
+    fun selectStreamingProvider(provider: StreamingProvider?) {
+        _selectedStreamingProvider.value = provider
+    }
+
+    fun setStreamingSearchQuery(query: String) {
+        _streamingSearchQuery.value = query
+    }
+
+    fun loadStreamingTrackToDeckA(context: Context, track: StreamingTrack) {
+        val numericId = -1000L - kotlin.math.abs(track.id.hashCode().toLong())
+        val localTrack = track.toLocalTrack(numericId)
+        _bpmA.value = track.bpm
+        playTrackA(context, localTrack)
+    }
+
+    fun loadStreamingTrackToDeckB(context: Context, track: StreamingTrack) {
+        val numericId = -2000L - kotlin.math.abs(track.id.hashCode().toLong())
+        val localTrack = track.toLocalTrack(numericId)
+        _bpmB.value = track.bpm
+        playTrackB(context, localTrack)
+    }
+
+    fun addCustomStreamingTrack(title: String, artist: String, url: String, provider: StreamingProvider, bpm: Int = 128) {
+        val customTrack = StreamingTrack(
+            id = "custom_${System.currentTimeMillis()}",
+            title = title.ifBlank { "Custom Web Stream" },
+            artist = artist.ifBlank { "Live Stream" },
+            album = "Custom DJ Stream",
+            provider = provider,
+            streamUri = url,
+            bpm = bpm.coerceIn(60, 200),
+            durationMs = 300000,
+            externalUrl = url,
+            genre = "User Stream"
+        )
+        _streamingTracks.value = listOf(customTrack) + _streamingTracks.value
+    }
+
+    // Unified Dashboard: Streaming Service Active Connections
+    private val _isSpotifyConnected = MutableStateFlow(true)
+    val isSpotifyConnected: StateFlow<Boolean> = _isSpotifyConnected.asStateFlow()
+
+    private val _isYouTubeMusicConnected = MutableStateFlow(true)
+    val isYouTubeMusicConnected: StateFlow<Boolean> = _isYouTubeMusicConnected.asStateFlow()
+
+    private val _isAmazonMusicConnected = MutableStateFlow(true)
+    val isAmazonMusicConnected: StateFlow<Boolean> = _isAmazonMusicConnected.asStateFlow()
+
+    fun toggleSpotifyConnection() {
+        _isSpotifyConnected.value = !_isSpotifyConnected.value
+        showPlayerNotification(
+            title = "Spotify Verbindung",
+            message = if (_isSpotifyConnected.value) "Spotify Streams im Player aktiviert" else "Spotify Streams deaktiviert",
+            type = if (_isSpotifyConnected.value) PlayerNotificationType.SUCCESS else PlayerNotificationType.INFO
+        )
+    }
+
+    fun toggleYouTubeMusicConnection() {
+        _isYouTubeMusicConnected.value = !_isYouTubeMusicConnected.value
+        showPlayerNotification(
+            title = "YouTube Music Verbindung",
+            message = if (_isYouTubeMusicConnected.value) "YouTube Music Streams im Player aktiviert" else "YouTube Music Streams deaktiviert",
+            type = if (_isYouTubeMusicConnected.value) PlayerNotificationType.SUCCESS else PlayerNotificationType.INFO
+        )
+    }
+
+    fun toggleAmazonMusicConnection() {
+        _isAmazonMusicConnected.value = !_isAmazonMusicConnected.value
+        showPlayerNotification(
+            title = "Amazon Music Verbindung",
+            message = if (_isAmazonMusicConnected.value) "Amazon Music Streams im Player aktiviert" else "Amazon Music Streams deaktiviert",
+            type = if (_isAmazonMusicConnected.value) PlayerNotificationType.SUCCESS else PlayerNotificationType.INFO
+        )
+    }
+
+    fun isProviderConnected(provider: StreamingProvider): Boolean {
+        return when (provider) {
+            StreamingProvider.SPOTIFY -> _isSpotifyConnected.value
+            StreamingProvider.YOUTUBE_MUSIC -> _isYouTubeMusicConnected.value
+            StreamingProvider.AMAZON_MUSIC -> _isAmazonMusicConnected.value
+        }
+    }
+
+    // In-App Player HUD Notifications & Warnings
+    private val _activePlayerNotification = MutableStateFlow<PlayerNotification?>(null)
+    val activePlayerNotification: StateFlow<PlayerNotification?> = _activePlayerNotification.asStateFlow()
+    private var notificationDismissJob: Job? = null
+
+    fun showPlayerNotification(
+        title: String,
+        message: String,
+        type: PlayerNotificationType = PlayerNotificationType.INFO,
+        durationMs: Long = 3500
+    ) {
+        val notif = PlayerNotification(title = title, message = message, type = type)
+        _activePlayerNotification.value = notif
+        notificationDismissJob?.cancel()
+        notificationDismissJob = viewModelScope.launch {
+            delay(durationMs)
+            if (_activePlayerNotification.value?.id == notif.id) {
+                _activePlayerNotification.value = null
+            }
+        }
+    }
+
+    fun dismissPlayerNotification() {
+        notificationDismissJob?.cancel()
+        _activePlayerNotification.value = null
+    }
+
     private val _aiQueue = MutableStateFlow<List<LocalTrack>>(emptyList())
     val aiQueue: StateFlow<List<LocalTrack>> = _aiQueue.asStateFlow()
 
@@ -495,6 +664,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     val currentSkin: StateFlow<DjSkin> = _currentSkin.asStateFlow()
 
     init {
+        activeInstance = this
         val database = AppDatabase.getDatabase(application)
         repository = SettingsRepository(database.settingsDao())
         
@@ -596,6 +766,44 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
                 repository.saveSettings(settings)
             }
         }
+    }
+
+    fun notifyNotificationAndWidgets(context: Context = getApplication()) {
+        try {
+            val trackA = _currentTrackA.value ?: _currentTrack.value
+            val trackB = _currentTrackB.value
+            val isA = _isPlayingA.value
+            val isB = _isPlayingB.value
+            val effectiveBpmA = (_bpmA.value * _pitchA.value).toInt()
+            val effectiveBpmB = (_bpmB.value * _pitchB.value).toInt()
+            val inSync = _isSyncA.value || _isSyncB.value
+
+            MediaNotificationManager.showOrUpdateNotification(
+                context = context,
+                trackA = trackA,
+                trackB = trackB,
+                isPlayingA = isA,
+                isPlayingB = isB,
+                bpmA = effectiveBpmA,
+                bpmB = effectiveBpmB,
+                isSync = inSync
+            )
+            DjQuickPlayerWidgetProvider.updateAllWidgets(
+                context = context,
+                track = trackA,
+                isPlaying = isA || _isPlaying.value,
+                bpm = effectiveBpmA
+            )
+            DjDualDeckWidgetProvider.updateAllWidgets(
+                context = context,
+                trackA = trackA,
+                trackB = trackB,
+                isPlayingA = isA,
+                isPlayingB = isB,
+                bpmA = effectiveBpmA,
+                bpmB = effectiveBpmB
+            )
+        } catch (_: Exception) {}
     }
 
     fun saveCurrentSettings(context: Context? = null) {
@@ -724,6 +932,16 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
         val gainB = if (x >= 0.5f) 1.0f else (x * 2f).coerceIn(0f, 1f)
 
         val master = _volume.value * _masterLevel.value
+        val peakGain = master * maxOf(_ch1Level.value * _trimA.value, _ch2Level.value * _trimB.value)
+        if (peakGain > 1.25f) {
+            showPlayerNotification(
+                title = "Audio-Clipping Warnung",
+                message = "Lautstärkepegel übersteuert (${String.format("%.1fx", peakGain)}) - Bitte Master/Trim absenken",
+                type = PlayerNotificationType.WARNING,
+                durationMs = 4000
+            )
+        }
+
         var finalVolA = (master * _ch1Level.value * gainA * _trimA.value).coerceIn(0f, 1f)
         var finalVolB = (master * _ch2Level.value * gainB * _trimB.value).coerceIn(0f, 1f)
 
@@ -1156,6 +1374,8 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             updateMediaPlayerVolume()
             updateMediaPlayerPitch()
             startProgressTracker()
+            notifyNotificationAndWidgets(context)
+            showPlayerNotification("DECK A: Track geladen", "${track.title} • ${_bpmA.value.toInt()} BPM", PlayerNotificationType.SUCCESS)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -1180,6 +1400,8 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             updateMediaPlayerVolume()
             updateMediaPlayerPitch()
             startProgressTracker()
+            notifyNotificationAndWidgets(context)
+            showPlayerNotification("DECK B: Track geladen", "${track.title} • ${_bpmB.value.toInt()} BPM", PlayerNotificationType.SUCCESS)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -1633,12 +1855,14 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
     fun togglePlayPauseA() {
         exoPlayerA?.let { player ->
             if (player.isPlaying) player.pause() else player.play()
+            notifyNotificationAndWidgets()
         }
     }
 
     fun togglePlayPauseB() {
         exoPlayerB?.let { player ->
             if (player.isPlaying) player.pause() else player.play()
+            notifyNotificationAndWidgets()
         }
     }
 
@@ -1651,6 +1875,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             exoPlayerA?.play()
             exoPlayerB?.play()
         }
+        notifyNotificationAndWidgets()
     }
 
     fun cueDeckA() {
@@ -1752,6 +1977,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             val currentBeatIndexA = (_playbackPositionA.value / beatDurB).toLong()
             val target = (currentBeatIndexA * beatDurB + phaseB).toInt().coerceIn(0, _playbackDurationA.value.coerceAtLeast(0))
             seekToA(target)
+            showPlayerNotification("BEAT SYNC: Deck A", "Deck A auf ${(_bpmB.value * _pitchB.value).toInt()} BPM synchronisiert", PlayerNotificationType.SYNC)
         }
     }
 
@@ -1766,6 +1992,7 @@ class LocalMusicViewModel(application: Application) : AndroidViewModel(applicati
             val currentBeatIndexB = (_playbackPositionB.value / beatDurA).toLong()
             val target = (currentBeatIndexB * beatDurA + phaseA).toInt().coerceIn(0, _playbackDurationB.value.coerceAtLeast(0))
             seekToB(target)
+            showPlayerNotification("BEAT SYNC: Deck B", "Deck B auf ${(_bpmA.value * _pitchA.value).toInt()} BPM synchronisiert", PlayerNotificationType.SYNC)
         }
     }
 

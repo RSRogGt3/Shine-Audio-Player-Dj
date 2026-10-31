@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Music Creator</string>
+    <string name="widget_quick_player_name">DJ Quick Player</string>
+    <string name="widget_quick_player_desc">Kompakter DJ Player mit Play/Pause, Titel und Deck A Steuerung.</string>
+    <string name="widget_dual_deck_name">DJ Dual-Deck Controller</string>
+    <string name="widget_dual_deck_desc">Dual-Deck DJ Konsole mit Status für Deck A &amp; B, Beat Sync und CUE.</string>
 </resources>

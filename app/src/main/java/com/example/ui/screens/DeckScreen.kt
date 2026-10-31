@@ -38,12 +38,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.LocalTrack
 import com.example.ui.viewmodels.DjSkin
 import com.example.ui.viewmodels.DeskType
 import com.example.ui.viewmodels.EqualizerBand
+import com.example.ui.models.DefaultStreamingCatalog
+import com.example.ui.components.ImportantInfoBanner
+import com.example.ui.components.PlayerNotificationHud
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -67,6 +71,7 @@ fun DeckScreen(
         val list = mutableListOf(mediaAudioPermission, Manifest.permission.RECORD_AUDIO)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             list.add(Manifest.permission.READ_MEDIA_VIDEO)
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         list
     }
@@ -149,6 +154,7 @@ fun DeckScreen(
 
     val availableSkins by viewModel.availableSkins.collectAsState()
     val currentSkin by viewModel.currentSkin.collectAsState()
+    val activeNotification by viewModel.activePlayerNotification.collectAsState()
     
     var showExportDialog by remember { mutableStateOf(false) }
     var showLyricsDialog by remember { mutableStateOf(false) }
@@ -180,6 +186,16 @@ fun DeckScreen(
     val surfaceColor = Color(currentSkin.surfaceColorHex)
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Floating Player HUD Notification
+        PlayerNotificationHud(
+            notification = activeNotification,
+            onDismiss = { viewModel.dismissPlayerNotification() },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .zIndex(10f)
+        )
+
         Crossfade(
             targetState = backgrounds[currentBgIndex],
             animationSpec = tween(1500),
@@ -258,86 +274,12 @@ fun DeckScreen(
                 onSkinSelected = { viewModel.selectSkin(it) }
             )
 
-            // Permissions Check & Status Banner
-            if (!permissionState.allPermissionsGranted) {
-                Spacer(modifier = Modifier.height(12.dp))
-                val isPermanentlyDenied = permissionState.permissions.any { it.status is PermissionStatus.Denied && !it.status.shouldShowRationale }
-                
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("deck_permission_banner"),
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFF21151A),
-                    border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.7f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Lock,
-                                contentDescription = null,
-                                tint = Color(0xFFFF5252),
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Berechtigungen erforderlich",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    text = if (isPermanentlyDenied) 
-                                        "Dateizugriff in Einstellungen aktivieren für eigene MP3s & MP4s" 
-                                    else 
-                                        "Zugriff auf Audio/Video & Mikrofon (Visualizer) erlauben",
-                                    fontSize = 10.sp,
-                                    color = Color.LightGray,
-                                    maxLines = 2
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        if (isPermanentlyDenied) {
-                            Button(
-                                onClick = {
-                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                        data = Uri.fromParts("package", context.packageName, null)
-                                    }
-                                    context.startActivity(intent)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252)),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Text("Einstellungen", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        } else {
-                            Button(
-                                onClick = { permissionState.launchMultiplePermissionRequest() },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                modifier = Modifier.testTag("deck_grant_permission_btn")
-                            ) {
-                                Text("Erlauben", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
-                            }
-                        }
-                    }
-                }
-            }
+            // Important Information & Privacy Transparency Banner (Collapsible)
+            ImportantInfoBanner(
+                isPermissionGranted = permissionState.allPermissionsGranted,
+                onRequestPermission = { permissionState.launchMultiplePermissionRequest() },
+                modifier = Modifier.padding(top = 8.dp)
+            )
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -996,9 +938,16 @@ fun TrackPickerDialog(
         )
     }
 
+    val streamingTracks = remember {
+        DefaultStreamingCatalog.tracks.mapIndexed { idx, it ->
+            it.toLocalTrack(-500L - idx)
+        }
+    }
+
     val currentList = when (selectedCategory) {
         "AUDIO" -> tracks.ifEmpty { sampleTracks.filter { !it.isVideo } }
         "VIDEO" -> videos.ifEmpty { sampleTracks.filter { it.isVideo } }
+        "STREAMING" -> streamingTracks
         else -> sampleTracks
     }
 
@@ -1060,9 +1009,14 @@ fun TrackPickerDialog(
                 // Category Tabs
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    listOf("AUDIO" to "Musik (MP3)", "VIDEO" to "Videos (MP4)", "SAMPLES" to "Samples").forEach { (cat, title) ->
+                    listOf(
+                        "AUDIO" to "Musik",
+                        "STREAMING" to "Streaming",
+                        "VIDEO" to "Videos",
+                        "SAMPLES" to "Samples"
+                    ).forEach { (cat, title) ->
                         val isSelected = selectedCategory == cat
                         Surface(
                             onClick = { selectedCategory = cat },
@@ -1073,7 +1027,7 @@ fun TrackPickerDialog(
                             Box(modifier = Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = title,
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isSelected) Color.Black else Color.LightGray
                                 )

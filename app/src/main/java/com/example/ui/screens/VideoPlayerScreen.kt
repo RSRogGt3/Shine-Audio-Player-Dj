@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Pause
@@ -148,7 +148,7 @@ fun VideoPlayerScreen(
                         modifier = Modifier
                             .background(Color.Black.copy(alpha = 0.6f), MaterialTheme.shapes.small)
                     ) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Zurück", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück", tint = Color.White)
                     }
 
                     Row(

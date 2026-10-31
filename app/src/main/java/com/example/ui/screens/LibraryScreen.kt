@@ -40,9 +40,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.viewmodels.LocalMusicViewModel
 import com.example.ui.viewmodels.LocalTrack
+import com.example.ui.components.ImportantInfoBanner
+import com.example.ui.components.PlayerNotificationHud
+import com.example.ui.components.UnifiedStreamingDashboard
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.isGranted
@@ -70,6 +74,7 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
     val localTracks by viewModel.localTracks.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     
+    var selectedSourceTab by remember { mutableStateOf("LOCAL") } // "LOCAL", "STREAMING"
     var searchQuery by remember { mutableStateOf("") }
     var showRecorder by remember { mutableStateOf(false) }
     val filteredTracks = remember(localTracks, searchQuery) {
@@ -91,11 +96,14 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
     val audioLevel by viewModel.audioLevel.collectAsState()
     val beatLevel by viewModel.beatLevel.collectAsState()
     val visualizerBands by viewModel.visualizerBands.collectAsState()
+    val activeNotification by viewModel.activePlayerNotification.collectAsState()
 
-    // Query local audio tracks whenever permission is granted
+    // Query local audio tracks whenever permission is granted; otherwise load sample library
     LaunchedEffect(permissionState.allPermissionsGranted) {
         if (permissionState.allPermissionsGranted) {
             viewModel.fetchLocalMusic(context)
+        } else if (localTracks.isEmpty()) {
+            viewModel.loadSampleLibrary()
         }
     }
 
@@ -104,6 +112,16 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
             .fillMaxSize()
             .background(Color(0xFF121212))
     ) {
+        // Floating In-App Player Notification HUD
+        PlayerNotificationHud(
+            notification = activeNotification,
+            onDismiss = { viewModel.dismissPlayerNotification() },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .zIndex(10f)
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -144,10 +162,68 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                 )
             }
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
+            // UNIFIED STREAMING & AUDIO DASHBOARD
+            UnifiedStreamingDashboard(
+                viewModel = viewModel,
+                isStorageGranted = permissionState.permissions.any { it.permission in listOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_EXTERNAL_STORAGE) && it.status.isGranted },
+                isMicGranted = permissionState.permissions.any { it.permission == Manifest.permission.RECORD_AUDIO && it.status.isGranted },
+                isNotificationGranted = true,
+                onRequestPermissions = { permissionState.launchMultiplePermissionRequest() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Source Switcher: [ 📱 LOKALE DATEIEN ] [ 🌐 STREAMING HUB (SPOTIFY • YT • AMAZON) ]
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF1E1D2D))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    "LOCAL" to "📱 LOKALE DATEIEN",
+                    "STREAMING" to "🌐 STREAMING (SPOTIFY / YT / AMAZON)"
+                ).forEach { (tabKey, title) ->
+                    val isSelected = selectedSourceTab == tabKey
+                    Surface(
+                        onClick = { selectedSourceTab = tabKey },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = title,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) Color.Black else Color.LightGray
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (selectedSourceTab == "STREAMING") {
+                StreamingHubSection(
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                // Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
@@ -165,113 +241,30 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                 shape = RoundedCornerShape(12.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Real-time Audio Visualizer Card when track active, otherwise Hero Image
-            if (currentTrack != null) {
-                RealtimeAudioVisualizerCard(
-                    currentTrack = currentTrack!!,
-                    isPlaying = isPlaying,
-                    audioLevel = audioLevel,
-                    beatLevel = beatLevel,
-                    visualizerBands = visualizerBands,
-                    primaryColor = MaterialTheme.colorScheme.primary
+            // Track count & Quick Action bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${filteredTracks.size} Tracks bereit",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
-            } else {
-                coil.compose.AsyncImage(
-                    model = com.example.R.drawable.img_library_hero,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .padding(horizontal = 20.dp)
-                        .clip(RoundedCornerShape(16.dp)),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                Text(
+                    text = "Tippen zum Abspielen • DECK A / B zum Auflegen",
+                    fontSize = 10.sp,
+                    color = Color.Gray
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Permissions Check / Main Library View
-            if (!permissionState.allPermissionsGranted) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E)),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            val isPermanentlyDenied = permissionState.permissions.any { it.status is PermissionStatus.Denied && !it.status.shouldShowRationale }
-                            val shouldShowRationale = permissionState.permissions.any { it.status.shouldShowRationale }
-
-                            Icon(
-                                imageVector = if (isPermanentlyDenied) Icons.Filled.Lock else Icons.Filled.Folder,
-                                contentDescription = null,
-                                tint = if (isPermanentlyDenied) Color.Gray else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(64.dp)
-                            )
-                            Text(
-                                text = if (isPermanentlyDenied) "Berechtigung dauerhaft verweigert" else "Berechtigung erforderlich",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = if (shouldShowRationale) {
-                                    "Um Musik von deinem Handy abzuspielen, benötigt der Player Zugriff auf deine Audiodateien."
-                                } else if (isPermanentlyDenied) {
-                                    "Der Zugriff wurde dauerhaft verweigert. Bitte aktiviere ihn in den Einstellungen deines Handys."
-                                } else {
-                                    "Um Musik von deinem Handy abzuspielen, benötigt der Player Zugriff auf deine Audiodateien."
-                                },
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = Color.LightGray,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-                            
-                            if (isPermanentlyDenied) {
-                                Button(
-                                    onClick = {
-                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                            data = Uri.fromParts("package", context.packageName, null)
-                                        }
-                                        context.startActivity(intent)
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp)
-                                ) {
-                                    Text("Einstellungen öffnen", color = Color.Black, fontWeight = FontWeight.Bold)
-                                }
-                            } else {
-                                Button(
-                                    onClick = { permissionState.launchMultiplePermissionRequest() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    modifier = Modifier.fillMaxWidth().height(48.dp).testTag("grant_permission_button")
-                                ) {
-                                    Text("Zugriff erlauben", color = Color.Black, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            TextButton(
-                                onClick = { viewModel.loadSampleLibrary() }
-                            ) {
-                                Text("Demo-Bibliothek laden (Internet-Stream)", color = MaterialTheme.colorScheme.secondary)
-                            }
-                        }
-                    }
-                }
-            } else {
+            Spacer(modifier = Modifier.height(4.dp))
                 if (isLoading) {
                     Box(
                         modifier = Modifier
@@ -377,6 +370,7 @@ fun LibraryScreen(viewModel: LocalMusicViewModel = viewModel()) {
                                 .weight(1f)
                                 .padding(horizontal = 16.dp)
                                 .testTag("library_list"),
+                            contentPadding = PaddingValues(top = 4.dp, bottom = 32.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(filteredTracks) { track ->
